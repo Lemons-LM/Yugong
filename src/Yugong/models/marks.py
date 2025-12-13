@@ -1,0 +1,10 @@
+class Marks:
+    lbrace: str = '{'
+    rbrace: str = '}'
+    lbracket: str = '['
+    rbracket: str = ']'
+    langle: str = '<'
+    rangle: str = '>'
+    lparen: str = '('
+    rparen: str = ')'
+    pipe: str = '|'
