@@ -1,0 +1,81 @@
+from src.Yugong.models.template_parameter import TemplateParameter
+from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
+
+#TODO: Change it to template-only
+class TemplateTask:
+    """
+    New Template Task, including template syntax and link syntax.
+
+    The TemplateTask.test() should always be run first before action, otherwise, it will throw an error.
+    """
+
+    name: str = ''
+    have_tested: bool = False
+    alias: list[str] = None
+    parameters: list[TemplateParameter] = None
+    rename_para: bool = False
+    no_para_needed: bool = False
+    template_type: str = None # 'template' or 'link'
+
+    def __init__(self, *, name: str, alias: list[str]=None, parameters: list[TemplateParameter], rename_para: bool=False,
+                 template_type: str, no_para_needed: bool=False) -> None:
+        """
+        Initialize a TemplateTask instance.
+
+        Args:
+            name (str, REQUIRED): The name of the task.
+            alias (list[str]): Alternative names (redirects) for the task.
+            parameters (list[TemplateParameter]): Required parameters for the task.
+            rename_para (bool, default to False): Whether parameters should be auto renamed to the 'name' attr.
+            template_type (str, REQUIRED): Type of the template ('template', refers to '{{}}' syntax or 'link', refers to '[[]]' syntax). Default to template
+            no_para_needed (bool, default to False): Whether the task requires any parameters.
+        """
+        self.name = name
+        self.alias = alias
+        self.parameters = parameters
+        self.no_para_needed = no_para_needed
+        self.rename_para = rename_para
+        self.template_type = template_type.lower()
+
+    def test(self) -> None:
+        """
+        Whatever the task is, if TemplateTask.test() has not run first, it will throw an Error.
+        Test aimed to make sure all the needed paras are filled, and all the types are at the right data type.
+        """
+        if self.have_tested:
+            return
+        failed_list: list[str] = []
+        if is_str_empty_or_none(self.name) and is_list_empty_or_none(self.alias):
+            failed_list.append('name')
+
+        if not self.no_para_needed and is_list_empty_or_none(self.parameters):
+            failed_list.append('parameters')
+
+        for para in self.parameters:
+            test_result: str= para.test(position=self.parameters.index(para))
+            if not is_str_empty_or_none(test_result):
+                failed_list.append(str(self.parameters.index(para)))
+
+        if is_str_empty_or_none(self.template_type) or self.template_type not in ['template', 'link']:
+            failed_list.append('template_type')
+
+        if len(failed_list) != 0:
+            if not is_str_empty_or_none(self.name):
+                raise ValueError(
+                    f"TemplateTask.test() failed, at TemplateTask.name = {self.name} the following parameters are not filled: " + str(failed_list))
+            elif not is_list_empty_or_none(self.alias):
+                raise ValueError(
+                    f"TemplateTask.test() failed,TemplateTask.alias = {self.alias}, the following parameters are not filled: " + str(failed_list))
+            else:
+                raise ValueError(
+                    f"TemplateTask.test() failed, with no name or alias, the following parameters are not filled: " + str(failed_list))
+        else:
+            self._init_for_use()
+            self.have_tested = True
+
+    def _init_for_use(self) -> None:
+        if self.name is None:
+            self.name = self.alias[0]
+
+        if self.name not in self.alias:
+            self.alias.append(self.name)

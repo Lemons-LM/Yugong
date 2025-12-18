@@ -1,10 +1,23 @@
-# Mode: 1=pageid, 2=Category 3=Linked
-ACTION_API_URL=
-REST_API_URL=
-HUMAN_NEEDED=FALSE
-MODE=1
-USER_AGENT=
-START_PAGE_ID=
-END_PAGE_ID=
-CATEGORY=
-LINKED_PAGE=
+# Fill the items as need. If it is something you don't need, it is something you can leave it empty or just delete them.
+
+# Wiki settings
+api_endpoint=
+user_agent=
+is_owner_only=
+client_id=
+
+# About Task
+page_id_start=
+page_id_end=
+linked_template=
+category=
+
+# Settings/Behavior
+risk_level= # If filled any of the next four lines, this won't work
+overwrite_para_name=
+overwrite_template_name=
+is_dangerous_tag_unacceptable=
+max_acceptable_diff_size=
+enable_cangjie=
+
+# Other Settings in Extensions

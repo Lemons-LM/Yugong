@@ -1,8 +1,8 @@
 from src.Yugong.models.template_parameter import TemplateParameter
 from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
 
-
-class TemplateTask:
+#TODO: Change it to link-only
+class LinkTask:
     """
     New Template Task, including template syntax and link syntax.
 

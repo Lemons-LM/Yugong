@@ -1,0 +1,21 @@
+from email.policy import default
+
+
+class LocalSettings:
+    """
+    When do [get_settings], set needed names defined in /LocalSettings.txt
+    Using someway to make it could be used, by using [LocalSettings.foo]
+    if there is something LocalSettings have, overwrite them defined in DefaultSettings.
+    Don't forget to do with the comments in the file!
+    If the consumer is owner_only, load [access_token] from System Environments, in the [WikiInstance]
+    """
+
+class DefaultSettings:
+    """
+    Default settings for the script.
+    """
+    user_agent: str = "Yugong/1.0(Gecko-like, Repository/github.com:Lemons-LM/Yugong), Python/3.12"
+
+
+local_settings: LocalSettings = LocalSettings()
+default_settings: DefaultSettings = DefaultSettings()
