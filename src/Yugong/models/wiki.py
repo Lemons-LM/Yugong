@@ -54,3 +54,6 @@ class WikiInstance:
         """
         Set Wikitext via page_name and REST API Endpoint
         """
+
+
+wiki_instance: WikiInstance = WikiInstance()

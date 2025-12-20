@@ -3,6 +3,8 @@ from os import remove
 from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none, is_int_lt_or_none
 
 
+#NOTE: Note that if a template is like {{Foo|test=test|bar}}, it will also regard "bar" as position para 1
+
 class TemplateParameter:
     """
     A class used to represent a template parameter with various validation and initialization options.
@@ -76,10 +78,6 @@ class TemplateParameter:
         errors: list[str] = []
         if is_str_empty_or_none(self.name) and is_list_empty_or_none(self.alias) and is_int_lt_or_none(x=self.position, target=1):
             errors.append('name, alias and position not exist')
-
-        if not is_int_lt_or_none(x=self.position, target=1):
-            if position != self.position:
-                errors.append('position is not equal to the position in the template')
 
         if not is_str_empty_or_none(self.name) and not is_int_lt_or_none(x=self.position, target=1):
             errors.append('both name and position exist')

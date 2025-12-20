@@ -1,6 +1,3 @@
-from email.policy import default
-
-
 class LocalSettings:
     """
     When do [get_settings], set needed names defined in /LocalSettings.txt
@@ -9,6 +6,11 @@ class LocalSettings:
     Don't forget to do with the comments in the file!
     If the consumer is owner_only, load [access_token] from System Environments, in the [WikiInstance]
     """
+    @classmethod
+    def add(cls, *, key: str, value: str):
+        setattr(cls, key, value)
+
+
 
 class DefaultSettings:
     """

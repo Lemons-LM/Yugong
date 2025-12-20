@@ -16,9 +16,10 @@ class TemplateTask:
     rename_para: bool = False
     no_para_needed: bool = False
     template_type: str = None # 'template' or 'link'
+    is_lua_template: bool = False
 
     def __init__(self, *, name: str, alias: list[str]=None, parameters: list[TemplateParameter], rename_para: bool=False,
-                 template_type: str, no_para_needed: bool=False) -> None:
+                 template_type: str, no_para_needed: bool=False, is_lua_template: bool=False) -> None:
         """
         Initialize a TemplateTask instance.
 
@@ -36,6 +37,7 @@ class TemplateTask:
         self.no_para_needed = no_para_needed
         self.rename_para = rename_para
         self.template_type = template_type.lower()
+        self.is_lua_template = is_lua_template
 
     def test(self) -> None:
         """
@@ -52,7 +54,7 @@ class TemplateTask:
             failed_list.append('parameters')
 
         for para in self.parameters:
-            test_result: str= para.test(position=self.parameters.index(para))
+            test_result: str= para.test()
             if not is_str_empty_or_none(test_result):
                 failed_list.append(str(self.parameters.index(para)))
 

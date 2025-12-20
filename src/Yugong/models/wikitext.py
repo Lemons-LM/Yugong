@@ -84,6 +84,8 @@ class Wikitext:
         Presenting user a [Wikitext.do(task)] simple something.
         Don't forget to run [task.test()] before running!
         """
+        if not task.have_tested:
+            task.test()
 
     def mark_immutable(self) -> None:
         """
