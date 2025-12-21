@@ -161,7 +161,7 @@ class Wikitext:
                         mark_num -= 1
 
                 template = tmp_str[prev_char_pos:pos + 1]
-                self.template_str.append(template)
+                self.template_str_list.append(template)
                 tmp_str = tmp_str[:prev_char_pos] + f'Template_Number_{str(template_number)}' + tmp_str[pos + 1:]
                 template_number += 1
                 positions.append(pos)
