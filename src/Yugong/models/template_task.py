@@ -54,7 +54,7 @@ class TemplateTask:
             failed_list.append('parameters')
 
         for para in self.parameters:
-            test_result: str= para.test()
+            test_result: str= para.test(is_lua=self.is_lua_template)
             if not is_str_empty_or_none(test_result):
                 failed_list.append(str(self.parameters.index(para)))
 
@@ -64,13 +64,13 @@ class TemplateTask:
         if len(failed_list) != 0:
             if not is_str_empty_or_none(self.name):
                 raise ValueError(
-                    f"TemplateTask.test() failed, at TemplateTask.name = {self.name} the following parameters are not filled: " + str(failed_list))
+                    f"TemplateTask.test() failed, at TemplateTask.name = {self.name} the following parameters are not filled:\n\n" + '\n'.join(str(e) for e in failed_list))
             elif not is_list_empty_or_none(self.alias):
                 raise ValueError(
-                    f"TemplateTask.test() failed,TemplateTask.alias = {self.alias}, the following parameters are not filled: " + str(failed_list))
+                    f"TemplateTask.test() failed,TemplateTask.alias = {self.alias}, the following parameters are not filled:\n\n" + '\n'.join(str(e) for e in failed_list))
             else:
                 raise ValueError(
-                    f"TemplateTask.test() failed, with no name or alias, the following parameters are not filled: " + str(failed_list))
+                    f"TemplateTask.test() failed, with no name or alias, the following parameters are not filled:\n\n" + '\n'.join(str(e) for e in failed_list))
         else:
             self._init_for_use()
             self.have_tested = True

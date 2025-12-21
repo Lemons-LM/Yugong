@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.Yugong.models.settings import local_settings, default_settings
+from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none
 
 
 def get_settings() -> None:
@@ -37,3 +38,8 @@ def get_settings() -> None:
     for attr in attrs_ds:
         if not hasattr(local_settings, attr):
             local_settings.add(key=attr, value=getattr(default_settings, attr))
+
+    if not hasattr(local_settings, 'api_endpoint'):
+        raise ValueError(f"Warning: Check api_endpoint defined in LocalSettings.txt. \nThe program does not know which wiki it is.")
+    if not hasattr(local_settings, 'page_id_start') or hasattr(local_settings, 'linked_template') or hasattr(local_settings, 'category'):
+        raise ValueError(f"Warning: Check # About Task part defined in LocalSettings.txt. \nThe program does not know what to do.")

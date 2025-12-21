@@ -1,5 +1,3 @@
-from os import remove
-
 from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none, is_int_lt_or_none
 
 
@@ -18,6 +16,7 @@ class TemplateParameter:
         regex_format_pattern (str): Regex pattern used for formatting operations. Defaults to None.
         regex_multiline_mode (bool): Enables multiline mode for regex patterns. Defaults to False.
         remove_para (bool): Indicates whether the parameter should be removed. Defaults to False.
+        is_patterned_para (bool): Defines if it is a para with pattern-like, for lua template usages. Defaults to False.
     """
 
     name: str = None
@@ -26,10 +25,10 @@ class TemplateParameter:
     required: bool = False
     regex_lookup_pattern: str = None
     regex_format_pattern: str = None
-    regex_multiline_mode: bool = False
     remove_para: bool = False
+    is_patterned_para = False
 
-    def __init__(self, *, name: str, alias: list[str]=None, position: int=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False) -> None:
+    def __init__(self, *, name: str=None, alias: list[str]=None, position: int=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False, is_patterned_para: bool=False) -> None:
         """
         Initializes a TemplateParameter instance with specified attributes.
 
@@ -42,6 +41,7 @@ class TemplateParameter:
             regex_format_pattern (str, optional): Regex pattern for formatting. Defaults to None.
             regex_multiline_mode (bool, optional): Enable multiline regex mode. Defaults to False.
             remove_para (bool, optional): Whether to remove this parameter. Defaults to False.
+            is_patterned_para: Defines if it is a para with pattern-like, for lua template usages
 
             Note:
                 - If both position and name/alias are provided, it will return an error
@@ -56,8 +56,9 @@ class TemplateParameter:
         self.regex_format_pattern = regex_format_pattern
         self.regex_multiline_mode = regex_multiline_mode
         self.remove_para = remove_para
+        self.is_patterned_para = is_patterned_para
 
-    def test(self, *, position: int) -> str:
+    def test(self, *, is_lua: bool) -> str:
         """
         Validates the current configuration of the TemplateParameter against a given position.
 
@@ -70,7 +71,7 @@ class TemplateParameter:
         - Validating multiline regex settings.
 
         Args:
-            position (int): The expected position of the parameter in the template.
+            is_lua: If it is Lua Template
 
         Returns:
             str: An error message if validation fails; otherwise, an empty string.
@@ -94,8 +95,16 @@ class TemplateParameter:
         if not is_str_empty_or_none(self.regex_lookup_pattern) and '\n' in self.regex_lookup_pattern and not self.regex_multiline_mode:
             errors.append('regex_lookup_pattern contains newline characters but regex_multiline_mode is False')
 
+        if not is_lua and self.is_patterned_para:
+            errors.append('is_patterned_para cannot set to true if it isn\'t a lua template')
+
         if len(errors) != 0:
-            return f'TemplateParameter.test() failed, at position {position} the following parameters are not filled: ' + str(errors)
+            if not is_str_empty_or_none(self.name):
+                raise ValueError(
+                    f"TemplateParameter.test() failed, at TemplateParameter.name = {self.name}. The following parameters are not filled: " + ', '.join(str(e) for e in errors))
+            elif not is_list_empty_or_none(self.alias):
+                raise ValueError(
+                    f"TemplateParameter.test() failed,TemplateParameter.alias = {self.alias}. The following parameters are not filled: " + ', '.join(str(e) for e in errors))
         else:
             self._init_for_use()
             return ''

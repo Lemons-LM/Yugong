@@ -76,7 +76,7 @@ class Wikitext:
         If condition regex true or false, add sth at where before or after
         """
 
-    def do(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
+    def do(self, task: TemplateTask or LinkTask or TagTask) -> None:
         """
         Do different jobs via different data types.
         [check_dangerous] -> [extract] -> [to_object] ->
