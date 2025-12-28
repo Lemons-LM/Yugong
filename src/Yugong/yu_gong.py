@@ -65,5 +65,13 @@ def yu_gong():
             module_name = f"src.Yugong.Extensions.{f.stem}"
             importlib.import_module(module_name)
 
+    intro_strs: str= "The following Extensions are loaded:\n"
     for f in INTROS:
-        f()
+        intro_str: str = f()
+        intro_strs += f"{intro_str}\n"
+
+    if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/n): ")
+    if if_confirmed_extensions not in ["y", "yes"]:
+        print("Please check again the LocalSettings.txt")
+        return
+

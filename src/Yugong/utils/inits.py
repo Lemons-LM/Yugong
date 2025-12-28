@@ -31,7 +31,14 @@ def get_settings() -> None:
             value = value.strip()
             if not key or not value:
                 continue
-            local_settings.add(key=key, value=value)
+
+            parsed_value = value
+            if value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                parsed_value = int(value)
+            elif value.replace('.', '').replace('-', '').isdigit():
+                parsed_value = float(value)
+
+            local_settings.add(key=key, value=parsed_value)
 
     attrs_ds = {attr for attr in dir(default_settings) if not attr.startswith('__') and not callable(getattr(default_settings, attr))}
 

@@ -13,7 +13,7 @@ class Wikitext:
     title: str = None
     revid: int = None
     page_id: int = None
-    original_content: str = None
+    _original_content: str = None
     processed_content: str = None
     template_str_list: list[str] = None
     template_obj_list: list[Template] = None
@@ -30,9 +30,9 @@ class Wikitext:
 
     def set_content(self, content: str) -> None:
         if content is not None:
-            self.original_content = content
-            if not is_str_empty_or_none(self.original_content):
-                self.processed_content = ""
+            self._original_content = content
+            if not is_str_empty_or_none(self._original_content):
+                self.processed_content = self._original_content
         else:
             raise ValueError("Content cannot be None")
 
@@ -114,7 +114,7 @@ class Wikitext:
     #TODO: This hasn't finished yet
     def _extract_template_or_link(self, *, task: TemplateTask or LinkTask) -> None:
         names: list[str] = task.alias
-        tmp_str: str = self.original_content
+        tmp_str: str = self.processed_content
         positions: list[int] = []
         left_mark = None
         right_mark = None

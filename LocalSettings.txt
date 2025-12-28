@@ -3,7 +3,7 @@
 # Wiki settings
 api_endpoint=
 user_agent=
-is_owner_only=
+is_owner_only= # If true, set your oauth access token in environment variables named MW_OAUTH_TOKEN
 client_id=
 
 # About Task
@@ -19,5 +19,7 @@ overwrite_template_name=
 is_dangerous_tag_unacceptable=
 max_acceptable_diff_size=
 enable_cangjie=
+request_max_tries=
+edit_comment=
 
 # Other Settings in Extensions

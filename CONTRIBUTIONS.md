@@ -19,3 +19,25 @@
 
 5. **Safety Comes First**    
     We don't want to make vandalism to the wiki, even more than to contribute. If something fails the test, make sure the entire program won't execute.
+
+## Jobs
+- [ ] Fill the code which has doc strs
+  - [ ] models
+    - [ ] [link_task.py](src/Yugong/models/link_task.py)
+    - [x] [marks.py](src/Yugong/models/marks.py)
+    - [x] [settings.py](src/Yugong/models/settings.py)
+    - [ ] [tag_task.py](src/Yugong/models/tag_task.py)
+    - [ ] [template.py](src/Yugong/models/template.py)
+    - [ ] [template_parameter.py](src/Yugong/models/template_parameter.py)
+    - [x] [wiki.py](src/Yugong/models/wiki.py)
+    - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
+  - [x] utils
+    - [x] [inits.py](src/Yugong/utils/inits.py)
+    - [x] [is_empty_or_none.py](src/Yugong/utils/is_empty_or_none.py) Note: Python might not need this
+    - [x] [mark_job_intro.py](src/Yugong/utils/mark_job_intro.py)
+  - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
+- Add doc strs:
+  - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
+- [ ] Write some extensions
+- [ ] Write tests
+- [ ] Check the todos

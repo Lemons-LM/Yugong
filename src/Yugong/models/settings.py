@@ -17,6 +17,8 @@ class DefaultSettings:
     Default settings for the script.
     """
     user_agent: str = "Yugong/1.0(Gecko-like, Repository/github.com:Lemons-LM/Yugong), Python/3.12"
+    request_max_tries: int = 3
+    edit_comment: str = "Edited by Yugong (gh@Lemons-LM/Yugong) program"
 
 
 local_settings: LocalSettings = LocalSettings()
