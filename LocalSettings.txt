@@ -1,3 +1,5 @@
+#TODO: Change this to a TOML
+
 # Fill the items as need. If it is something you don't need, it is something you can leave it empty or just delete them.
 
 # Wiki settings
@@ -13,12 +15,12 @@ linked_template=
 category=
 
 # Settings/Behavior
-risk_level= # If filled any of the next four lines, this won't work
+safe_tag_list= # Change to a list of safe tags
+max_acceptable_diff_size=
 overwrite_para_name=
 overwrite_template_name=
-is_dangerous_tag_unacceptable=
-max_acceptable_diff_size=
 enable_cangjie=
+zh_convert_to=
 request_max_tries=
 edit_comment=
 

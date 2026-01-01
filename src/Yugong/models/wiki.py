@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from os import access
 
 import requests
 

@@ -1,3 +1,5 @@
+from typing import Final
+
 from src.Yugong.models.link_task import LinkTask
 from src.Yugong.models.marks import Marks
 from src.Yugong.models.tag_task import TagTask
@@ -15,31 +17,39 @@ class Wikitext:
     page_id: int = None
     _original_content: str = None
     processed_content: str = None
-    template_str_list: list[str] = None
-    template_obj_list: list[Template] = None
-    link_str_list: list[str] = None
-    link_obj_list: list[Template] = None
-    tag_str_list: list[str] = None
-    tag_obj_list: list[Template] = None
+    template_str_list: list[dict] = []
+    template_obj_list: list[Template] = []
+    link_str_list: list[dict] = []
+    link_obj_list: list[Template] = []
+    tag_str_list: list[dict] = []
+    tag_obj_list: list[Template] =[]
     is_available: bool = False
+    item_number: int = 1
+
 
 
     def __init__(self, *, title: str, revid: int) ->  None:
-        self.title = title
-        self.revid = revid
+        if title: self.title = title
+        if revid: self.revid = revid
 
     def set_content(self, content: str) -> None:
         if content is not None:
-            self._original_content = content
-            if not is_str_empty_or_none(self._original_content):
+            if is_str_empty_or_none(self._original_content):
+                self._original_content = content
                 self.processed_content = self._original_content
         else:
             raise ValueError("Content cannot be None")
 
-    def extract(self, * task: TemplateTask or LinkTask or TagTask) -> None:
+    def extract(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         extracting needed item via different methods/task_type, only to the type's str_list
         """
+        if isinstance(task, (TemplateTask, LinkTask)):
+            self._extract_template_or_link(task=task)
+        elif isinstance(task, TagTask):
+            self._extract_tag(task=task)
+        else:
+            raise ValueError("task must be TemplateTask or LinkTask or TagTask")
 
     def to_object(self, * task: TemplateTask or LinkTask or TagTask) -> None:
         """
@@ -63,13 +73,21 @@ class Wikitext:
         Convert the whole object to a string, processed_content
         """
 
-    def check_dangerous(self) -> None:
+    def check_dangerous(self, *, first_run: bool=False, last_run: bool=False) -> None:
         """
         check:
         - diff size
         - if there's uncertain tags like font or center
         then follow the LocalSetting/Default
         """
+        if first_run and last_run:
+            raise ValueError("first_run and last_run cannot be both True")
+        elif first_run:
+            # check if there is some tags not <ref>, if
+        elif last_run:
+            # Compare diff size between _original_content and processed_content
+        else:
+            self.check_dangerous()
 
     def add_with_condition(self,* , regex: str, condition_tf: bool, add_str: str, before: str, after:str) -> None:
         """
@@ -92,8 +110,11 @@ class Wikitext:
         Auto mark immutable items of zh_convert, the Cangjie part. Including:
         - `{{NoteTA}}` Template
         - `-{foo}-` syntax
-        - `{{foo}}` templates
+        - `{{foo}}` templates [to be discussed]
         - `{{foo` template start, `|foo=` template para name
+        - `File:`/`Image:` every parameter start with these namespaces
+        - `[[]]` in-wiki link
+        - `gallery` tag or templates
 
         Convert them to something like `[{SUBST_0001}]`
         or something definitely will never be used in all the wikitext syntax
@@ -111,20 +132,25 @@ class Wikitext:
         We need to make sure extensions cannot use this. Use safer ones instead
         """
 
-    #TODO: This hasn't finished yet
-    def _extract_template_or_link(self, *, task: TemplateTask or LinkTask) -> None:
+    def _extract_template_or_link(self, *, task: TemplateTask | LinkTask, from_place: str=None, to_place=None) -> None:
         names: list[str] = task.alias
         tmp_str: str = self.processed_content
-        positions: list[int] = []
-        left_mark = None
-        right_mark = None
+        left_mark: str = ""
+        right_mark: str = ""
         pipe_mark = Marks.pipe
-        template_number: int = 1
+        mode: str= ''
 
-        if task.template_type == 'template':
+        if isinstance(task, TemplateTask):
+            mode = 'template'
+        elif isinstance(task, LinkTask):
+            mode = 'link'
+        else:
+            raise ValueError("task must be TemplateTask or LinkTask")
+
+        if mode == 'template':
             left_mark = Marks.lbrace
             right_mark = Marks.rbrace
-        elif task.template_type == 'link':
+        elif mode == 'link':
            left_mark = Marks.lbracket
            right_mark = Marks.rbracket
 
@@ -160,9 +186,16 @@ class Wikitext:
                     elif tmp_str[pos] in [right_mark]:
                         mark_num -= 1
 
-                template = tmp_str[prev_char_pos:pos + 1]
-                self.template_str_list.append(template)
-                tmp_str = tmp_str[:prev_char_pos] + f'Template_Number_{str(template_number)}' + tmp_str[pos + 1:]
-                template_number += 1
-                positions.append(pos)
+                item_tag: str = f'Item_Number_{str(self.item_number)}'
+                item: dict = {'name': item_tag, 'content': tmp_str[pos:next_char_pos + 1]}
+                if mode == 'template':
+                    self.template_str_list.append(item)
+                elif mode == 'link':
+                    self.link_str_list.append(item)
+
+                tmp_str = tmp_str[:prev_char_pos] + item_tag + tmp_str[pos + 1:]
+                self.item_number += 1
                 start = 0
+
+    def _extract_tag(self, task: TagTask):
+        pass

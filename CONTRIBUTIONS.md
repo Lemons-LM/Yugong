@@ -21,6 +21,7 @@
     We don't want to make vandalism to the wiki, even more than to contribute. If something fails the test, make sure the entire program won't execute.
 
 ## Jobs
+- [ ] Design Tag Arch
 - [ ] Fill the code which has doc strs
   - [ ] models
     - [ ] [link_task.py](src/Yugong/models/link_task.py)
@@ -38,6 +39,8 @@
   - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
 - Add doc strs:
   - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
+- [ ] Write some Extensions
+- [ ] Change [LocalSettings.txt](LocalSettings.txt) to TOML and rename as [Settings.toml](Settings.toml), them change LocalSettings/DefaultSettings to just one Settings
 - [ ] Write some extensions
 - [ ] Write tests
 - [ ] Check the todos
