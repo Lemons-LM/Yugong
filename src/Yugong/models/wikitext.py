@@ -83,7 +83,7 @@ class Wikitext:
         if first_run and last_run:
             raise ValueError("first_run and last_run cannot be both True")
         elif first_run:
-            # check if there is some tags not <ref>, if
+            # check if there is some tags not in settings' safe tag list
         elif last_run:
             # Compare diff size between _original_content and processed_content
         else:
