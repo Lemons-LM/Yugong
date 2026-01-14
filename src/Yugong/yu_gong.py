@@ -9,7 +9,7 @@ from src.Yugong.utils.mark_job_intro import INTROS
 def yu_gong():
     """
     [done] 1. Welcome the user to use and ask them to confirm knowing they need to take full responsibility to using the program
-    [done]2. Do get_settings and ask the user to confirm the program's settings in LocalSettings.txt
+    [done]2. Do get_settings and ask the user to confirm the program's settings in settings.toml
     3. Ask the user to confirm the Extensions' job by use all @intro s to print strs that intro each extension's usage
     4. Everything is confirmed, init the wiki_instance and get job list
     5. Do jobs.
@@ -56,7 +56,7 @@ def yu_gong():
 
     if_confirmed_job = input(f"The following settings are confirmed:\n{result}\nDo you want to continue? (y/n): ").lower()
     if if_confirmed_job not in ["y", "yes"]:
-        print("Please check again the LocalSettings.txt")
+        print("Please check again the settings.toml")
         return
 
     steps_path = Path(__file__).parent / "Extensions"
@@ -72,6 +72,6 @@ def yu_gong():
 
     if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/n): ")
     if if_confirmed_extensions not in ["y", "yes"]:
-        print("Please check again the LocalSettings.txt")
+        print("Please check again the settings.toml")
         return
 

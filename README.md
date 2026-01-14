@@ -24,7 +24,7 @@ YuGong is a Python-based automated wiki editing tool designed to help users batc
 
 1. Clone the project repository
 2. Install the dependency environment
-3. Configure [LocalSettings.txt](LocalSettings.txt)
+3. Configure [LocalSettings.txt](settings.toml)
 4. Run:
 ```shell
 cd path_to_project
@@ -36,29 +36,7 @@ python3 main.py
 
 ### Configuration Guide
 
-Set necessary parameters in [LocalSettings.txt](LocalSettings.txt):
-
-```txt
-# Wiki Settings
-api_endpoint=          # Wiki API endpoint, REQUIRED
-user_agent=           # Request User-Agent
-is_owner_only=        # Whether to enable owner protection mode
-client_id=            # OAuth client ID
-
-# Task Settings (At lease fill one of them)
-page_id_start=        # Starting page ID
-page_id_end=          # Ending page ID
-linked_template=      # Target template to process
-category=             # Working category
-
-# Behavior Settings
-risk_level=           # Risk control level, or one of the four below
-overwrite_para_name=  # Auto change the parameters' names to the preferred ones defined in extensions
-overwrite_template_name= # Auto change the template's name to the preferred one defined in extensions
-is_dangerous_tag_unacceptable= # If something like `<big><big><big>something</big></big></big>` or `<div style="wt*isit: bar">`, shall the program throw an error and skip/exit
-max_acceptable_diff_size= # compare the raw wikitext and the final one, how much diff it makes
-enable_cangjie=       # Whether to enable Cangjie varients conversion
-```
+Set up [settings.toml](settings.toml)
 
 
 ## Extension Development
@@ -75,7 +53,7 @@ Follow these steps to create custom extensions:
 ## Usage Workflow
 
 1. **Initialization Confirmation**: User confirms understanding of usage responsibilities
-2. **Configuration Loading**: Read and validate [LocalSettings.txt](LocalSettings.txt) configuration
+2. **Configuration Loading**: Read and validate [LocalSettings.txt](settings.toml) configuration
 3. **Task Preview**: Display all extension task descriptions
 4. **Execution Processing**: Connect to wiki instance and execute processing
 5. **Result Output**: Show processing results and provide follow-up actions:

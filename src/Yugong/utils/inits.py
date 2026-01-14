@@ -1,52 +1,30 @@
 from pathlib import Path
 
-from src.Yugong.models.settings import local_settings, default_settings
-from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none
+import toml
+
+from src.Yugong.models.settings import settings
 
 
 def get_settings() -> None:
-    settings: list[str] = []
 
     project_root = Path(__file__).parent.parent.parent.parent
-    text_path = project_root / "LocalSettings.txt"
+    text_path = project_root / "settings.toml"
 
     if not text_path.exists():
         raise ValueError(f"Warning: {text_path} not found")
 
     with open(text_path, 'r', encoding='utf-8') as f:
-        setting_str: str = f.read()
+        settings_dict: dict = toml.load(f)
 
-    settings_list: list[str] = setting_str.split('\n')
-    for setting in settings_list:
-        if '#' in setting:
-            setting = setting[:setting.index('#')]
-        cleaned_setting: str = setting.strip()
-        if cleaned_setting:
-            settings.append(cleaned_setting)
+    for key, value in settings_dict.items():
+        if value is not None:
+            settings.set(key=key, value=value)
 
-    for setting in settings:
-        if '=' in setting:
-            key, value = setting.split('=', 1)
-            key = key.strip()
-            value = value.strip()
-            if not key or not value:
-                continue
 
-            parsed_value = value
-            if value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
-                parsed_value = int(value)
-            elif value.replace('.', '').replace('-', '').isdigit():
-                parsed_value = float(value)
+    if not hasattr(settings, 'api_endpoint') or not settings.api_endpoint:
+        raise ValueError(f"Warning: Check api_endpoint defined in settings.toml. \nThe program does not know which wiki it is.")
 
-            local_settings.add(key=key, value=parsed_value)
-
-    attrs_ds = {attr for attr in dir(default_settings) if not attr.startswith('__') and not callable(getattr(default_settings, attr))}
-
-    for attr in attrs_ds:
-        if not hasattr(local_settings, attr):
-            local_settings.add(key=attr, value=getattr(default_settings, attr))
-
-    if not hasattr(local_settings, 'api_endpoint'):
-        raise ValueError(f"Warning: Check api_endpoint defined in LocalSettings.txt. \nThe program does not know which wiki it is.")
-    if not hasattr(local_settings, 'page_id_start') or hasattr(local_settings, 'linked_template') or hasattr(local_settings, 'category'):
-        raise ValueError(f"Warning: Check # About Task part defined in LocalSettings.txt. \nThe program does not know what to do.")
+    if not (hasattr(settings, 'page_id_start') and settings.page_id_start != 0
+            or hasattr(settings, 'linked_template') and settings.linked_template
+            or hasattr(settings, 'category') and settings.category):
+        raise ValueError(f"Warning: Check # About Task part defined in settings.toml. \nThe program does not know what to do.")

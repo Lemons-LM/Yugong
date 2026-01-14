@@ -2,10 +2,13 @@ from typing import Final
 
 from src.Yugong.models.link_task import LinkTask
 from src.Yugong.models.marks import Marks
+from src.Yugong.models.settings import settings
 from src.Yugong.models.tag_task import TagTask
 from src.Yugong.models.template_task import TemplateTask
 from src.Yugong.models.template import Template
-from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none
+from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
+import re
+from bs4 import BeautifulSoup
 
 
 class Wikitext:
@@ -40,6 +43,13 @@ class Wikitext:
         else:
             raise ValueError("Content cannot be None")
 
+    def update(self, *, processed_content: str) -> None:
+        """
+        Update the processed_content from somewhere outside the class
+        """
+        if processed_content: self.processed_content = processed_content
+
+
     def extract(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         extracting needed item via different methods/task_type, only to the type's str_list
@@ -51,7 +61,7 @@ class Wikitext:
         else:
             raise ValueError("task must be TemplateTask or LinkTask or TagTask")
 
-    def to_object(self, * task: TemplateTask or LinkTask or TagTask) -> None:
+    def to_object(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         Parsing the str_list to the obj_list.
         If the paras' names could be converted to the preferred ones, convert them this step.
@@ -63,7 +73,8 @@ class Wikitext:
         Apply changes defined in tasks
         """
 
-    def obj_to_str_list(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
+
+    def to_str_list(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
         """
         Convert obj_list to str_list
         """
@@ -73,26 +84,93 @@ class Wikitext:
         Convert the whole object to a string, processed_content
         """
 
-    def check_dangerous(self, *, first_run: bool=False, last_run: bool=False) -> None:
+    def check_dangerous(self, *, first_run: bool=False, last_run: bool=False) -> bool:
         """
         check:
         - diff size
         - if there's uncertain tags like font or center
         then follow the LocalSetting/Default
+
+        True to Dangerous,
+        False to Safe
         """
         if first_run and last_run:
             raise ValueError("first_run and last_run cannot be both True")
         elif first_run:
             # check if there is some tags not in settings' safe tag list
+            result = []
+
+            # 使用BeautifulSoup解析HTML标签
+            soup = BeautifulSoup(self.processed_content, 'html.parser')
+            all_tags = [tag.name for tag in soup.find_all()]
+
+            if hasattr(settings, 'safe_tag_list'):
+                safe_tags = settings.safe_tag_list
+            else:
+                safe_tags = []
+            if hasattr(settings, 'unsafe_tag_list'):
+                unsafe_tags = settings.unsafe_tag_list
+            else:
+                unsafe_tags = []
+
+            if is_list_empty_or_none(x=all_tags):
+                return False
+
+            if is_list_empty_or_none(x=safe_tags) and not is_list_empty_or_none(x=unsafe_tags):
+                for tag_name in all_tags:
+                    if tag_name in unsafe_tags:
+                        result.append(tag_name)
+            elif is_list_empty_or_none(x=safe_tags) and is_list_empty_or_none(x=unsafe_tags):
+                for tag_name in all_tags:
+                    result.append(tag_name)
+            elif not is_list_empty_or_none(x=safe_tags) and is_list_empty_or_none(x=unsafe_tags):
+                for tag_name in all_tags:
+                    if tag_name not in unsafe_tags:
+                        result.append(tag_name)
+
+            if unsafe_tags:
+                return True
+            else:
+                return False
+
         elif last_run:
             # Compare diff size between _original_content and processed_content
+            if self._original_content is not None and self.processed_content is not None:
+                diff_size = abs(len(self._original_content) - len(self.processed_content))
+                max_diff_size = getattr(settings, 'max_diff_size', 500)
+                if diff_size > max_diff_size:
+                    return True
+                else:
+                    return False
         else:
-            self.check_dangerous()
+            if self._original_content is not None and self.processed_content is not None:
+                diff_size = abs(len(self._original_content) - len(self.processed_content))
+                max_diff_size = getattr(settings, 'max_diff_size', 500)
+                if diff_size > max_diff_size:
+                    return True
+                else:
+                    return False
 
     def add_with_condition(self,* , regex: str, condition_tf: bool, add_str: str, before: str, after:str) -> None:
         """
-        If condition regex true or false, add sth at where before or after
+        If condition regex true or false, add sth at where before or after.
+
+        Tips: You might want to add \n before/after the insert
         """
+
+        match_exists = bool(re.search(regex, self.processed_content))
+        
+        should_add = (match_exists == condition_tf)
+        
+        if should_add:
+            if before:
+                pattern = f'({re.escape(before)})'
+                replacement = f'{add_str}\\1'
+                self.processed_content = re.sub(pattern, replacement, self.processed_content)
+            elif after:
+                pattern = f'({re.escape(after)})'
+                replacement = f'\\1{add_str}'
+                self.processed_content = re.sub(pattern, replacement, self.processed_content)
 
     def do(self, task: TemplateTask or LinkTask or TagTask) -> None:
         """
@@ -104,6 +182,24 @@ class Wikitext:
         """
         if not task.have_tested:
             task.test()
+
+        if isinstance(task, (TemplateTask, LinkTask)):
+            self.extract(task=task)
+            self.to_object(task=task)
+            self.apply_task(task=task)
+            self.to_str_list(task=task)
+            self.to_str()
+            self.check_dangerous()
+        elif isinstance(task, TagTask):
+            self.extract(task=task)
+            self.to_object(task=task)
+            self.apply_task(task=task)
+            self.to_str_list(task=task)
+            self.to_str()
+            self.check_dangerous()
+        else:
+            raise ValueError("task must be TemplateTask or LinkTask or TagTask")
+
 
     def mark_immutable(self) -> None:
         """
@@ -120,17 +216,12 @@ class Wikitext:
         or something definitely will never be used in all the wikitext syntax
         """
 
-    def subst_regex(self, *, regex_list: list[str]) -> None:
+    def subst_regex(self, *, regex_list: list[str], subst_str: str) -> None:
         """
         subst via regex
         """
-
-    def update_processed_content(self, content: str) -> None:
-        """
-        Update the processed content without clearing all the content.
-        This was designed fot something like Cangjie zh-Hans <=> zh-Hant
-        We need to make sure extensions cannot use this. Use safer ones instead
-        """
+        for regex in regex_list:
+            self.processed_content = re.sub(regex, subst_str, self.processed_content)
 
     def _extract_template_or_link(self, *, task: TemplateTask | LinkTask, from_place: str=None, to_place=None) -> None:
         names: list[str] = task.alias

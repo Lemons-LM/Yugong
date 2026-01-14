@@ -1,0 +1,24 @@
+# WARNING: If you don't want to change the default settings to the program, remove the line.
+# If you leave it to empty, it will throw an error!
+# Wiki settings
+api_endpoint = ""
+user_agent = ""
+is_owner_only = false  # If true, set your oauth access token in environment variables named MW_OAUTH_TOKEN
+client_id = ""
+
+# About Task
+page_id_start = 0
+page_id_end = 0
+linked_template = ""
+category = ""
+
+# Settings/Behavior
+safe_tag_list = []  # Change to a list of safe tags
+unsafe_tag_list = [] # Both safe_tag_list and unsafe_tag_list can't be used at same time
+max_acceptable_diff_size = 500
+overwrite_para_name = true
+overwrite_template_name = true
+enable_cangjie = false
+#zh_convert_to = ""
+request_max_tries = 3
+edit_comment = "// Edited via Yugong 1.0"

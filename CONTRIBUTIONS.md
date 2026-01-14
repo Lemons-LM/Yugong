@@ -40,7 +40,7 @@
 - Add doc strs:
   - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
 - [ ] Write some Extensions
-- [ ] Change [LocalSettings.txt](LocalSettings.txt) to TOML and rename as [Settings.toml](Settings.toml), them change LocalSettings/DefaultSettings to just one Settings
+- [ ] Change [LocalSettings.txt](settings.toml) to TOML and rename as [Settings.toml](Settings.toml), them change LocalSettings/DefaultSettings to just one Settings
 - [ ] Write some extensions
 - [ ] Write tests
 - [ ] Check the todos
