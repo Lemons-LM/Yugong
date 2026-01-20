@@ -2,7 +2,8 @@ from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empt
 
 
 #NOTE: Note that if a template is like {{Foo|test=test|bar}}, it will also regard "bar" as position para 1
-
+# TODO: This class has some errs on type and syntax, like name=None?str? and the testing logic
+# TODO: Make the anonymous paras available for lua templates
 class TemplateParameter:
     """
     A class used to represent a template parameter with various validation and initialization options.
@@ -28,12 +29,12 @@ class TemplateParameter:
     remove_para: bool = False
     is_patterned_para = False
 
-    def __init__(self, *, name: str=None, alias: list[str]=None, position: int=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False, is_patterned_para: bool=False) -> None:
+    def __init__(self, *, name: str="", alias: list[str]=[], position: int | bool | None=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False, is_patterned_para: bool=False) -> None:
         """
         Initializes a TemplateParameter instance with specified attributes.
 
         Args:
-            name (str, REQUIRED): The name of the parameter.
+            name (str, optional): The name of the parameter.
             alias (list[str], optional): Aliases for the parameter. Defaults to None.
             position (int, optional): Position in the template. Defaults to None.
             required (bool, optional): Whether the parameter is required. Defaults to False.

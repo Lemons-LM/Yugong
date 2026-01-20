@@ -4,6 +4,7 @@ from src.Yugong.models.link_task import LinkTask
 from src.Yugong.models.marks import Marks
 from src.Yugong.models.settings import settings
 from src.Yugong.models.tag_task import TagTask
+from src.Yugong.models.template_parameter import TemplateParameter
 from src.Yugong.models.template_task import TemplateTask
 from src.Yugong.models.template import Template
 from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
@@ -25,13 +26,11 @@ class Wikitext:
     link_str_list: list[dict] = []
     link_obj_list: list[Template] = []
     tag_str_list: list[dict] = []
-    tag_obj_list: list[Template] =[]
+    tag_obj_list: list[Template] = []
     is_available: bool = False
     item_number: int = 1
 
-
-
-    def __init__(self, *, title: str, revid: int) ->  None:
+    def __init__(self, *, title: str, revid: int) -> None:
         if title: self.title = title
         if revid: self.revid = revid
 
@@ -48,7 +47,6 @@ class Wikitext:
         Update the processed_content from somewhere outside the class
         """
         if processed_content: self.processed_content = processed_content
-
 
     def extract(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
@@ -73,7 +71,6 @@ class Wikitext:
         Apply changes defined in tasks
         """
 
-
     def to_str_list(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
         """
         Convert obj_list to str_list
@@ -84,7 +81,7 @@ class Wikitext:
         Convert the whole object to a string, processed_content
         """
 
-    def check_dangerous(self, *, first_run: bool=False, last_run: bool=False) -> bool:
+    def check_dangerous(self, *, first_run: bool = False, last_run: bool = False) -> bool:
         """
         check:
         - diff size
@@ -151,7 +148,7 @@ class Wikitext:
                 else:
                     return False
 
-    def add_with_condition(self,* , regex: str, condition_tf: bool, add_str: str, before: str, after:str) -> None:
+    def add_with_condition(self, *, regex: str, condition_tf: bool, add_str: str, before: str, after: str) -> None:
         """
         If condition regex true or false, add sth at where before or after.
 
@@ -159,9 +156,9 @@ class Wikitext:
         """
 
         match_exists = bool(re.search(regex, self.processed_content))
-        
+
         should_add = (match_exists == condition_tf)
-        
+
         if should_add:
             if before:
                 pattern = f'({re.escape(before)})'
@@ -200,7 +197,6 @@ class Wikitext:
         else:
             raise ValueError("task must be TemplateTask or LinkTask or TagTask")
 
-
     def mark_immutable(self) -> None:
         """
         Auto mark immutable items of zh_convert, the Cangjie part. Including:
@@ -223,13 +219,14 @@ class Wikitext:
         for regex in regex_list:
             self.processed_content = re.sub(regex, subst_str, self.processed_content)
 
-    def _extract_template_or_link(self, *, task: TemplateTask | LinkTask, from_place: str=None, to_place=None) -> None:
+    def _extract_template_or_link(self, *, task: TemplateTask | LinkTask, from_place: str = None,
+                                  to_place=None) -> None:
         names: list[str] = task.alias
         tmp_str: str = self.processed_content
         left_mark: str = ""
         right_mark: str = ""
         pipe_mark = Marks.pipe
-        mode: str= ''
+        mode: str = ''
 
         if isinstance(task, TemplateTask):
             mode = 'template'
@@ -242,14 +239,16 @@ class Wikitext:
             left_mark = Marks.lbrace
             right_mark = Marks.rbrace
         elif mode == 'link':
-           left_mark = Marks.lbracket
-           right_mark = Marks.rbracket
+            left_mark = Marks.lbracket
+            right_mark = Marks.rbracket
 
         for name in names:
             start = 0
             while True:
-                pos = tmp_str.find(name, start)
-                if pos == -1:
+                match = re.search(re.escape(name), tmp_str[start:], re.IGNORECASE)
+                if match:
+                    pos = start + match.start()
+                else:
                     break
                 prev_char_pos = pos - 1
                 # Check if it is A template but not PART of another template - Part LEFT
@@ -258,7 +257,8 @@ class Wikitext:
                 if prev_char_pos < 0 or tmp_str[prev_char_pos] not in [left_mark]:
                     start = pos + 1
                     continue
-                if tmp_str[pos] in [left_mark] and tmp_str[pos - 1] in [left_mark] and tmp_str[pos - 2] not in [left_mark]:
+                if tmp_str[pos] in [left_mark] and tmp_str[pos - 1] in [left_mark] and tmp_str[pos - 2] not in [
+                    left_mark]:
                     prev_char_pos -= 1
                 # Check if it is A template but not PART of another template - Part RIGHT
                 next_char_pos = pos + len(name)
@@ -290,3 +290,77 @@ class Wikitext:
 
     def _extract_tag(self, task: TagTask):
         pass
+
+
+if __name__ == '__main__':
+    task_normal: TemplateTask = TemplateTask(
+        name='Foo',
+        alias=['bar', 'test', 'example'],
+        parameters=[
+            TemplateParameter(
+                position=1,
+                required=True,
+                regex_lookup_pattern='^([a-zA-Z0-9]+)$',
+                regex_format_pattern='format=$1',
+                remove_para=False,
+                is_patterned_para=False
+            ),
+            TemplateParameter(
+                name='named',
+                alias=['npara', 'np'],
+                required=False,
+                regex_lookup_pattern='^([0-9]+)revoked$',
+                regex_format_pattern='format=$1',
+                remove_para=False,
+                is_patterned_para=False
+            ),
+            TemplateParameter(
+                name='removed',
+                alias=['rm', 'legacy'],
+                required=False,
+                remove_para=True,
+                is_patterned_para=False
+            )
+        ],
+        no_para_needed=False,
+        is_lua_template=False
+    )
+    task_normal.test()
+    task_lua: TemplateTask = TemplateTask(
+        name='Lua',
+        alias=['l', 'noteta'],
+        parameters=[
+            TemplateParameter(
+                position=1,
+                required=False,
+                regex_lookup_pattern='^([a-zA-Z0-9]+)$',
+                regex_format_pattern='format=$1',
+                remove_para=False,
+                is_patterned_para=True
+            ),
+            TemplateParameter(
+                name='T',
+                alias=['title'],
+                required=False,
+                regex_lookup_pattern='^(.*)$',
+                regex_format_pattern='format=$1',
+                remove_para=False,
+                is_patterned_para=False
+            ),
+            TemplateParameter(
+                name='G',
+                required=False,
+                regex_lookup_pattern="G[0-9]+=(.*)",
+                regex_format_pattern="G[0-9]+=(.*) True!",
+                is_patterned_para=True
+            )
+        ],
+        no_para_needed=False,
+        is_lua_template=True
+    )
+    task_lua.test()
+    wikitext: Wikitext = Wikitext(title="Wikitext Parser Function Test", revid=1)
+    wikitext.set_content("""
+    This is the test page of the Wikitext Class Parser Functions. It includes multiple "template tasks" to be fixed properly.
+    #TODO: Write this.
+    """)
