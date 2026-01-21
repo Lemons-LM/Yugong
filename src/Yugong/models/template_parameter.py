@@ -28,8 +28,9 @@ class TemplateParameter:
     regex_format_pattern: str = None
     remove_para: bool = False
     is_patterned_para = False
+    type: str = None
 
-    def __init__(self, *, name: str="", alias: list[str]=[], position: int | bool | None=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False, is_patterned_para: bool=False) -> None:
+    def __init__(self, *, name: str="", alias: list[str] | None=None, position: int | None=None, required: bool=False, regex_lookup_pattern: str=None, regex_format_pattern: str=None, regex_multiline_mode: bool=False, remove_para: bool=False, is_patterned_para: bool=False) -> None:
         """
         Initializes a TemplateParameter instance with specified attributes.
 
@@ -84,7 +85,7 @@ class TemplateParameter:
         if not is_str_empty_or_none(self.name) and not is_int_lt_or_none(x=self.position, target=1):
             errors.append('both name and position exist')
 
-        if not is_list_empty_or_none(self.alias) and is_int_lt_or_none(x=self.position, target=1):
+        if not is_list_empty_or_none(self.alias) and not is_int_lt_or_none(x=self.position, target=1):
             errors.append('both alias and position exist')
 
         if self.required and self.remove_para:
@@ -111,8 +112,16 @@ class TemplateParameter:
             return ''
 
     def _init_for_use(self) -> None:
-        if self.name is None:
-            self.name = self.alias[0]
+        print(f"initializing para: name: {self.name}, alias: {self.alias}, position: {self.position}")
+        # Find if it is an anonymous para
+        if self.position is not None:
+            self.type = "anonymous"
+        else:
+            self.type = "named"
+            if self.alias is None:
+                self.alias = []
+            if self.name is None:
+                self.name = self.alias[0]
 
-        if self.name not in self.alias:
-            self.alias.append(self.name)
+            if self.name not in self.alias:
+                self.alias.append(self.name)

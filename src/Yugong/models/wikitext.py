@@ -1,5 +1,3 @@
-from typing import Final
-
 from src.Yugong.models.link_task import LinkTask
 from src.Yugong.models.marks import Marks
 from src.Yugong.models.settings import settings
@@ -219,29 +217,23 @@ class Wikitext:
         for regex in regex_list:
             self.processed_content = re.sub(regex, subst_str, self.processed_content)
 
-    def _extract_template_or_link(self, *, task: TemplateTask | LinkTask, from_place: str = None,
-                                  to_place=None) -> None:
+    def _extract_template_or_link(self, *, task: TemplateTask | LinkTask) -> None:
         names: list[str] = task.alias
         tmp_str: str = self.processed_content
         left_mark: str = ""
         right_mark: str = ""
         pipe_mark = Marks.pipe
-        mode: str = ''
 
         if isinstance(task, TemplateTask):
             mode = 'template'
-        elif isinstance(task, LinkTask):
-            mode = 'link'
-        else:
-            raise ValueError("task must be TemplateTask or LinkTask")
-
-        if mode == 'template':
             left_mark = Marks.lbrace
             right_mark = Marks.rbrace
-        elif mode == 'link':
+        elif isinstance(task, LinkTask):
+            mode = 'link'
             left_mark = Marks.lbracket
             right_mark = Marks.rbracket
-
+        else:
+            raise ValueError("task must be TemplateTask or LinkTask")
         for name in names:
             start = 0
             while True:
@@ -278,13 +270,16 @@ class Wikitext:
                         mark_num -= 1
 
                 item_tag: str = f'Item_Number_{str(self.item_number)}'
-                item: dict = {'name': item_tag, 'content': tmp_str[pos:next_char_pos + 1]}
+                template_content = tmp_str[prev_char_pos - 1:pos]
+                print(template_content)
+                item: dict = {'name': item_tag, 'content': template_content}
                 if mode == 'template':
                     self.template_str_list.append(item)
                 elif mode == 'link':
                     self.link_str_list.append(item)
 
-                tmp_str = tmp_str[:prev_char_pos] + item_tag + tmp_str[pos + 1:]
+                tmp_str = tmp_str[:prev_char_pos - 1] + item_tag + tmp_str[pos + 1:]
+                self.processed_content = tmp_str
                 self.item_number += 1
                 start = 0
 
@@ -361,6 +356,19 @@ if __name__ == '__main__':
     task_lua.test()
     wikitext: Wikitext = Wikitext(title="Wikitext Parser Function Test", revid=1)
     wikitext.set_content("""
-    This is the test page of the Wikitext Class Parser Functions. It includes multiple "template tasks" to be fixed properly.
-    #TODO: Write this.
+This is the test page of the Wikitext Class Parser Functions. It includes multiple "template tasks" to be fixed properly.
+#TODO: Write this.
+begin{{foo|a{{{aaa}}}|bc{{BC}}}}end
+begin{{Bar|named=123|bc=BC|bar={{Bar}}}}end
+begin{{NoteTA
+|1=2
+|3=4
+|2=-{zh-hans: aaa;zh-hant: bbb}-
+|T=abcd
+|G1=aaaa
+|G2=bbbb}}end
     """)
+    wikitext.extract(task=task_normal)
+    wikitext.extract(task=task_lua)
+    print(wikitext.template_str_list)
+    print(wikitext.processed_content)

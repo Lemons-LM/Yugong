@@ -4,7 +4,7 @@ import time
 
 import requests
 
-from src.Yugong.models.settings import local_settings
+from src.Yugong.models.settings import settings
 from src.Yugong.models.wikitext import Wikitext
 
 
@@ -26,11 +26,11 @@ class WikiInstance:
 
     def _get_request(self, *, url: str, params: dict=None) -> requests.Response:
         headers: dict[str, str] = {
-            'User-Agent': local_settings.user_agent,
+            'User-Agent': settings.user_agent,
         }
         if self.access_token:
             headers['Authorization'] = f'Bearer {self.access_token}'
-        max_retries: int = int(local_settings.request_max_tries) or 3
+        max_retries: int = int(settings.request_max_tries) or 3
         for attempt in range(max_retries):
             response = requests.get(
                 url,
@@ -49,7 +49,7 @@ class WikiInstance:
 
     def _put_request(self, *, url: str, data: dict) -> requests.Response:
         headers: dict[str, str] = {
-            'User-Agent': local_settings.user_agent,
+            'User-Agent': settings.user_agent,
             'Content-Type': 'application/json',
         }
         if self.access_token:
@@ -57,7 +57,7 @@ class WikiInstance:
         else:
             raise Exception("No access token provided")
 
-        max_retries: int = int(local_settings.request_max_tries) or 3
+        max_retries: int = int(settings.request_max_tries) or 3
         for attempt in range(max_retries):
             response = requests.put(url, headers=headers, data=json.dumps(data))
             if response.status_code in [200, 201]:
@@ -77,16 +77,16 @@ class WikiInstance:
         """
         update settings which could be updated outside the object. Generate action/rest endpoint
         """
-        if local_settings.api_endpoint:
-            self.api_endpoint = local_settings.api_endpoint
+        if settings.api_endpoint:
+            self.api_endpoint = settings.api_endpoint
             self.action_endpoint = self.api_endpoint + 'api.php'
             self.rest_endpoint = self.api_endpoint + 'rest.php'
 
-        if local_settings.user_agent:
-            self.user_agent = local_settings.user_agent
+        if settings.user_agent:
+            self.user_agent = settings.user_agent
 
-        if local_settings.client_id:
-            self.client_id = local_settings.client_id
+        if settings.client_id:
+            self.client_id = settings.client_id
         self.init_instance()
 
     def init_instance(self) -> None:
@@ -124,19 +124,19 @@ class WikiInstance:
 
     def get_todo_list(self) -> list[str]:
         """
-        Get To-Do list via LocalSettings (local_settings.linked_template and local_settings.category), and Action API Endpoint.
+        Get To-Do list via LocalSettings (settings.linked_template and settings.category), and Action API Endpoint.
         Return as a list of page names
         """
         if not self.is_available:
             raise ValueError("Wiki instance is not available")
 
         todo_pages = set()
-        if hasattr(local_settings, 'linked_template'):
+        if hasattr(settings, 'linked_template'):
             template_params = {
                 'action': 'query',
                 'format': 'json',
                 'list': 'embeddedin',
-                'eititle': f"Template:{local_settings.linked_template}",
+                'eititle': f"Template:{settings.linked_template}",
                 'eilimit': 50
             }
 
@@ -145,12 +145,12 @@ class WikiInstance:
             embedded_pages = data.get('query', {}).get('embeddedin', [])
             todo_pages.update([page['title'] for page in embedded_pages])
 
-        if hasattr(local_settings, 'category'):
+        if hasattr(settings, 'category'):
             category_params = {
                 'action': 'query',
                 'format': 'json',
                 'list': 'categorymembers',
-                'cmtitle': f"Category:{local_settings.category}",
+                'cmtitle': f"Category:{settings.category}",
                 'cmlimit': 50,
                 'cmtype': 'page'
             }
@@ -161,7 +161,7 @@ class WikiInstance:
             todo_pages.update([page['title'] for page in category_pages])
 
         if not todo_pages:
-            raise ValueError("No linked_template or category specified in local_settings")
+            raise ValueError("No linked_template or category specified in settings")
 
         return list(todo_pages)
 
@@ -235,7 +235,7 @@ class WikiInstance:
 
         data: dict[str, str] = {
             'source': wikitext.processed_content,
-            'comment': local_settings.edit_comment,
+            'comment': settings.edit_comment,
             'latest': { "id": int(wikitext.revid) }
            }
 
