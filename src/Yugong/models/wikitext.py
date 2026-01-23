@@ -178,6 +178,8 @@ class Wikitext:
         if not task.have_tested:
             task.test()
 
+        #TODO: If the "str lists" are empty, pass this extension
+        #TODO: Log as level
         if isinstance(task, (TemplateTask, LinkTask)):
             self.extract(task=task)
             self.to_object(task=task)

@@ -75,3 +75,6 @@ class TemplateTask:
 
         if self.name not in self.alias:
             self.alias.append(self.name)
+
+        #TODO: If only exist positional paras, add a mark to make sure make `|foo|`'s | will be converted to `{{|}}`
+        #TODO: Make the anonymous paras and named paras seperated listed in two lists.
