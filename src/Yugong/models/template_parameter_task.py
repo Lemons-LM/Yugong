@@ -1,7 +1,7 @@
 #NOTE: Note that if a template is like {{Foo|test=test|bar}}, it will also regard "bar" as position para 1
 # TODO: This class has some errs on type and syntax, like name=None?str? and the testing logic
 # TODO: Make the anonymous paras available for lua templates
-class TemplateParameter:
+class TemplateParameterTask:
     """
     A class used to represent a template parameter with various validation and initialization options.
 

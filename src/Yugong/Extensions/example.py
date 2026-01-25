@@ -1,4 +1,4 @@
-from src.Yugong.models.template_parameter import TemplateParameter
+from src.Yugong.models.template_parameter_task import TemplateParameterTask
 from src.Yugong.models.template_task import TemplateTask
 from src.Yugong.models.wikitext import Wikitext
 from src.Yugong.utils.mark_job_intro import job, intro
@@ -17,7 +17,7 @@ def template_example_job(wikitext: Wikitext) -> Wikitext:
     _job: TemplateTask = TemplateTask(
         name='example',
         alias=['example'],
-        parameters=[TemplateParameter(name='test', regex_lookup_pattern=r"(from)(.*?)(regex)", regex_format_pattern=r"$1_$2", alias=['test', 'test2']), TemplateParameter(position=1, remove_para=True)],
+        parameters=[TemplateParameterTask(name='test', regex_lookup_pattern=r"(from)(.*?)(regex)", regex_format_pattern=r"$1_$2", alias=['test', 'test2']), TemplateParameterTask(position=1, remove_para=True)],
         template_type='template'
     )
     _job.test()

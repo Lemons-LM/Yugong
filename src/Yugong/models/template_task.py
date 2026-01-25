@@ -1,4 +1,4 @@
-from src.Yugong.models.template_parameter import TemplateParameter
+from src.Yugong.models.template_parameter_task import TemplateParameterTask
 class TemplateTask:
     """
     New Template Task, including template syntax and link syntax.
@@ -9,14 +9,16 @@ class TemplateTask:
     name: str = ''
     have_tested: bool = False
     alias: list[str] = None
-    parameters: list[TemplateParameter] = None
+    parameters: list[TemplateParameterTask] = None
+    named_para: list[TemplateParameterTask] = None
+    position_para: list[TemplateParameterTask] = None
     rename_para: bool = False
     no_para_needed: bool = False
     is_lua_template: bool = False
-    position_must_be_named: bool = False
+    position_must_be_named: bool = False # force |1=foo|2=bar
     namespace = 0
 
-    def __init__(self, *, name: str, alias: list[str]=None, parameters: list[TemplateParameter], rename_para: bool=False,
+    def __init__(self, *, name: str, alias: list[str]=None, parameters: list[TemplateParameterTask], rename_para: bool=False,
                  no_para_needed: bool=False, is_lua_template: bool=False) -> None:
         """
         Initialize a TemplateTask instance.
@@ -24,7 +26,7 @@ class TemplateTask:
         Args:
             name (str, REQUIRED): The name of the task.
             alias (list[str]): Alternative names (redirects) for the task.
-            parameters (list[TemplateParameter]): Required parameters for the task.
+            parameters (list[TemplateParameterTask]): Required parameters for the task.
             rename_para (bool, default to False): Whether parameters should be auto renamed to the 'name' attr.
             template_type (str, REQUIRED): Type of the template ('template', refers to '{{}}' syntax or 'link', refers to '[[]]' syntax). Default to template
             no_para_needed (bool, default to False): Whether the task requires any parameters.
@@ -76,5 +78,8 @@ class TemplateTask:
         if self.name not in self.alias:
             self.alias.append(self.name)
 
-        #TODO: If only exist positional paras, add a mark to make sure make `|foo|`'s | will be converted to `{{|}}`
-        #TODO: Make the anonymous paras and named paras seperated listed in two lists.
+        for para in self.parameters:
+            if para.position:
+                self.position_para.append(para)
+            else:
+                self.named_para.append(para)

@@ -33,6 +33,13 @@ class Template:
             raise ValueError("name and value cannot be empty")
         self.named_paras.append({"name": name, "value": value})
 
+    def remove_last_name_para(self) -> None:
+        """
+        Remove the last para
+        """
+        if self.named_paras:
+            self.named_paras.pop()
+
     def to_str(self) -> str:
         """
         Parse the object to a template str, and return it.

@@ -30,7 +30,7 @@
     - [x] [settings.py](src/Yugong/models/settings.py)
     - [ ] [tag_task.py](src/Yugong/models/tag_task.py)
     - [x] [template.py](src/Yugong/models/template.py)
-    - [ ] [template_parameter.py](src/Yugong/models/template_parameter.py)
+    - [ ] [template_parameter.py](src/Yugong/models/template_parameter_task.py)
     - [x] [wiki.py](src/Yugong/models/wiki.py)
     - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
   - [x] utils
