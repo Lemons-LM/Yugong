@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yugong"
+version = "0.1.0"
+
+dependencies = [
+    "requests~=2.32.5",
+    "toml~=0.10.2",
+    "beautifulsoup4~=4.14.3"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

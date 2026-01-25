@@ -25,22 +25,22 @@
 - [ ] Fill the code which has doc strs
   - [ ] models
     - [ ] [link_task.py](src/Yugong/models/link_task.py)
+    - [x] [logger.py](src/Yugong/models/logger.py)
     - [x] [marks.py](src/Yugong/models/marks.py)
     - [x] [settings.py](src/Yugong/models/settings.py)
     - [ ] [tag_task.py](src/Yugong/models/tag_task.py)
-    - [ ] [template.py](src/Yugong/models/template.py)
+    - [x] [template.py](src/Yugong/models/template.py)
     - [ ] [template_parameter.py](src/Yugong/models/template_parameter.py)
     - [x] [wiki.py](src/Yugong/models/wiki.py)
     - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
   - [x] utils
-    - [x] [inits.py](src/Yugong/utils/inits.py)
-    - [x] [is_empty_or_none.py](src/Yugong/utils/is_empty_or_none.py) Note: Python might not need this
+    - [x] [confirm_settings.py](src/Yugong/utils/confirm_settings.py)
+    - [x] [do_jobs.py](src/Yugong/utils/do_jobs.py)
     - [x] [mark_job_intro.py](src/Yugong/utils/mark_job_intro.py)
-  - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
-- Add doc strs:
-  - [ ] [yu_gong.py](src/Yugong/yu_gong.py)
-- [ ] Write some Extensions
-- [ ] Change [LocalSettings.txt](settings.toml) to TOML and rename as [Settings.toml](Settings.toml), them change LocalSettings/DefaultSettings to just one Settings
+    - [x] [path_helper.py](src/Yugong/utils/path_helper.py)
+  - [x] [yu_gong.py](src/Yugong/yu_gong.py)
+- [ ] Check logic:
+  - [ ] We currently removed a function which ignores what python's comparing logic is. So we might need to check if any logic is wrong.
 - [ ] Write some extensions
 - [ ] Write tests
 - [ ] Check the todos

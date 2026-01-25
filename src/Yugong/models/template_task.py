@@ -1,6 +1,4 @@
 from src.Yugong.models.template_parameter import TemplateParameter
-from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
-
 class TemplateTask:
     """
     New Template Task, including template syntax and link syntax.
@@ -15,6 +13,8 @@ class TemplateTask:
     rename_para: bool = False
     no_para_needed: bool = False
     is_lua_template: bool = False
+    position_must_be_named: bool = False
+    namespace = 0
 
     def __init__(self, *, name: str, alias: list[str]=None, parameters: list[TemplateParameter], rename_para: bool=False,
                  no_para_needed: bool=False, is_lua_template: bool=False) -> None:
@@ -44,22 +44,22 @@ class TemplateTask:
         if self.have_tested:
             return
         failed_list: list[str] = []
-        if is_str_empty_or_none(self.name) and is_list_empty_or_none(self.alias):
+        if not self.name and not self.alias:
             failed_list.append('name')
 
-        if not self.no_para_needed and is_list_empty_or_none(self.parameters):
+        if not self.no_para_needed and not self.parameters:
             failed_list.append('parameters')
 
         for para in self.parameters:
             test_result: str= para.test(is_lua=self.is_lua_template)
-            if not is_str_empty_or_none(test_result):
+            if  test_result:
                 failed_list.append(str(self.parameters.index(para)))
 
         if len(failed_list) != 0:
-            if not is_str_empty_or_none(self.name):
+            if  self.name:
                 raise ValueError(
                     f"TemplateTask.test() failed, at TemplateTask.name = {self.name} the following parameters are not filled:\n\n" + '\n'.join(str(e) for e in failed_list))
-            elif not is_list_empty_or_none(self.alias):
+            elif  self.alias:
                 raise ValueError(
                     f"TemplateTask.test() failed,TemplateTask.alias = {self.alias}, the following parameters are not filled:\n\n" + '\n'.join(str(e) for e in failed_list))
             else:

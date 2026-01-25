@@ -5,7 +5,6 @@ from src.Yugong.models.tag_task import TagTask
 from src.Yugong.models.template_parameter import TemplateParameter
 from src.Yugong.models.template_task import TemplateTask
 from src.Yugong.models.template import Template
-from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none
 import re
 from bs4 import BeautifulSoup
 
@@ -27,20 +26,34 @@ class Wikitext:
     tag_obj_list: list[Template] = []
     is_available: bool = False
     item_number: int = 1
+    namespace: int = None
+    permission: str = None
 
-    def __init__(self, *, title: str, revid: int) -> None:
-        if title: self.title = title
-        if revid: self.revid = revid
+    def __init__(self, metadata: dict[str,str]) -> None:
+        if metadata["title"]:
+            self.title = metadata["title"]
+
+        if metadata["revid"]:
+            self.revid = int(metadata["revid"])
+
+        if metadata["page_id"]:
+            self.page_id = int(metadata["pageid"])
+
+        if metadata["namespace"]:
+            self.namespace = int(metadata["namespace"])
+
+        if metadata["permission"]:
+            self.permission = metadata["permission"]
 
     def set_content(self, content: str) -> None:
         if content is not None:
-            if is_str_empty_or_none(self._original_content):
+            if not self._original_content:
                 self._original_content = content
                 self.processed_content = self._original_content
         else:
             raise ValueError("Content cannot be None")
 
-    def update(self, *, processed_content: str) -> None:
+    def update(self, processed_content: str) -> None:
         """
         Update the processed_content from somewhere outside the class
         """
@@ -108,17 +121,17 @@ class Wikitext:
             else:
                 unsafe_tags = []
 
-            if is_list_empty_or_none(x=all_tags):
+            if not all_tags:
                 return False
 
-            if is_list_empty_or_none(x=safe_tags) and not is_list_empty_or_none(x=unsafe_tags):
+            if not safe_tags and unsafe_tags:
                 for tag_name in all_tags:
                     if tag_name in unsafe_tags:
                         result.append(tag_name)
-            elif is_list_empty_or_none(x=safe_tags) and is_list_empty_or_none(x=unsafe_tags):
+            elif not safe_tags and not unsafe_tags:
                 for tag_name in all_tags:
                     result.append(tag_name)
-            elif not is_list_empty_or_none(x=safe_tags) and is_list_empty_or_none(x=unsafe_tags):
+            elif safe_tags and not unsafe_tags:
                 for tag_name in all_tags:
                     if tag_name not in unsafe_tags:
                         result.append(tag_name)
@@ -178,10 +191,12 @@ class Wikitext:
         if not task.have_tested:
             task.test()
 
-        #TODO: If the "str lists" are empty, pass this extension
-        #TODO: Log as level
+        if task.namespace != self.namespace:
+            return
         if isinstance(task, (TemplateTask, LinkTask)):
             self.extract(task=task)
+            if not self.template_str_list and not self.link_str_list:
+                return
             self.to_object(task=task)
             self.apply_task(task=task)
             self.to_str_list(task=task)
@@ -189,6 +204,8 @@ class Wikitext:
             self.check_dangerous()
         elif isinstance(task, TagTask):
             self.extract(task=task)
+            if not self.tag_str_list:
+                return
             self.to_object(task=task)
             self.apply_task(task=task)
             self.to_str_list(task=task)
@@ -222,8 +239,6 @@ class Wikitext:
     def _extract_template_or_link(self, *, task: TemplateTask | LinkTask) -> None:
         names: list[str] = task.alias
         tmp_str: str = self.processed_content
-        left_mark: str = ""
-        right_mark: str = ""
         pipe_mark = Marks.pipe
 
         if isinstance(task, TemplateTask):

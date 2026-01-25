@@ -1,6 +1,3 @@
-from src.Yugong.utils.is_empty_or_none import is_str_empty_or_none, is_list_empty_or_none, is_int_lt_or_none
-
-
 #NOTE: Note that if a template is like {{Foo|test=test|bar}}, it will also regard "bar" as position para 1
 # TODO: This class has some errs on type and syntax, like name=None?str? and the testing logic
 # TODO: Make the anonymous paras available for lua templates
@@ -79,32 +76,32 @@ class TemplateParameter:
             str: An error message if validation fails; otherwise, an empty string.
         """
         errors: list[str] = []
-        if is_str_empty_or_none(self.name) and is_list_empty_or_none(self.alias) and is_int_lt_or_none(x=self.position, target=1):
+        if not self.name and not self.alias and not self.position:
             errors.append('name, alias and position not exist')
 
-        if not is_str_empty_or_none(self.name) and not is_int_lt_or_none(x=self.position, target=1):
+        if  self.name and self.position:
             errors.append('both name and position exist')
 
-        if not is_list_empty_or_none(self.alias) and not is_int_lt_or_none(x=self.position, target=1):
+        if  self.alias and self.position:
             errors.append('both alias and position exist')
 
         if self.required and self.remove_para:
             errors.append('required and remove_para cannot be True at the same time')
 
-        if (not is_str_empty_or_none(self.regex_lookup_pattern) or not is_str_empty_or_none(self.regex_format_pattern)) and self.remove_para:
+        if ( self.regex_lookup_pattern or  self.regex_format_pattern) and self.remove_para:
             errors.append('regex_lookup_pattern and regex_format_pattern cannot be used with remove_para')
 
-        if not is_str_empty_or_none(self.regex_lookup_pattern) and '\n' in self.regex_lookup_pattern and not self.regex_multiline_mode:
+        if  self.regex_lookup_pattern and '\n' in self.regex_lookup_pattern and not self.regex_multiline_mode:
             errors.append('regex_lookup_pattern contains newline characters but regex_multiline_mode is False')
 
         if not is_lua and self.is_patterned_para:
             errors.append('is_patterned_para cannot set to true if it isn\'t a lua template')
 
         if len(errors) != 0:
-            if not is_str_empty_or_none(self.name):
+            if  self.name:
                 raise ValueError(
                     f"TemplateParameter.test() failed, at TemplateParameter.name = {self.name}. The following parameters are not filled: " + ', '.join(str(e) for e in errors))
-            elif not is_list_empty_or_none(self.alias):
+            elif  self.alias:
                 raise ValueError(
                     f"TemplateParameter.test() failed,TemplateParameter.alias = {self.alias}. The following parameters are not filled: " + ', '.join(str(e) for e in errors))
         else:

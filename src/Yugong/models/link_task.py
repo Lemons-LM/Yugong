@@ -11,3 +11,4 @@ class LinkTask:
     name: str = ''
     have_tested: bool = False
     subtasks: list[TemplateTask] = None
+    namespace: int = 0
