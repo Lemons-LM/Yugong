@@ -44,13 +44,13 @@ class Settings:
             if value is not None:
                 self.set(key=key, value=value)
 
-        if not hasattr(settings, 'api_endpoint') or not settings.api_endpoint:
+        if not hasattr(self, 'api_endpoint') or not self.api_endpoint:
             raise ValueError(
                 f"Warning: Check api_endpoint defined in settings.toml. \nThe program does not know which wiki it is.")
 
-        if not (hasattr(settings, 'page_id_start') and settings.page_id_start != 0
-                or hasattr(settings, 'linked_template') and settings.linked_template
-                or hasattr(settings, 'category') and settings.category):
+        if not (hasattr(self, 'page_id_start') and self.page_id_start != 0
+                or hasattr(self, 'linked_template') and self.linked_template
+                or hasattr(self, 'category') and self.category):
             raise ValueError(
                 f"Warning: Check # About Task part defined in settings.toml. \nThe program does not know what to do.")
 
