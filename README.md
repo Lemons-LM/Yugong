@@ -7,8 +7,8 @@ YuGong is a Python-based automated wiki editing tool designed to help users batc
 ## Core Features
 
 - **Automated Wiki Editing**: Supports batch page processing on specified wiki sites
-- **Task Processing**: Support template (`{{}}`), link(`[[]]`/`[]`) and tags (<foo>)
-- **Safety First**: If something might lead to vandalism, make the entire program doesn't work. 
+- **Task Processing**: Support template (`{{}}`), link(`[[]]`/`[]`) and tags (`<foo>`)
+- **Safety First**: If something might lead to vandalism, make the entire program doesn't work.
 - **Extensible Architecture**: Tasks are registered through the `Extensions` directory
 - **Safety Controls**: Built-in risk control mechanisms including diff size checking and dangerous tag detection
 - **Chinese Conversion**: Cangjie auto convert zh-Hans <=> zh-Hant, and other varients, via NoteTA so make sure no wrong convertions.
@@ -26,6 +26,7 @@ YuGong is a Python-based automated wiki editing tool designed to help users batc
 2. Install the dependency environment
 3. Configure [LocalSettings.txt](settings.toml)
 4. Run:
+
 ```shell
 cd path_to_project
 python3 -m venv venv
@@ -37,7 +38,6 @@ python3 main.py
 ### Configuration Guide
 
 Set up [settings.toml](settings.toml)
-
 
 ## Extension Development
 
@@ -71,10 +71,12 @@ Follow these steps to create custom extensions:
 ## Important Notes
 
 **Important Reminder**:
+
 - This software is provided "as is" without warranty of any kind
 - Users bear full responsibility for usage
 - Must ensure usage complies with all applicable laws and regulations in your jurisdiction
 - Including but not limited to the laws of the People's Republic of China
 
 ## Contributing
+
 Contributions are welcome, as long as follow the [legal terms](LEGAL.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md).
