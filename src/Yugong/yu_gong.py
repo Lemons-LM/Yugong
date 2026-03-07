@@ -13,4 +13,3 @@ def yu_gong():
     """
     confirm_settings()
     do_jobs()
-

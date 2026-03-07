@@ -29,7 +29,7 @@ class Wikitext:
     namespace: int = None
     permission: str = None
 
-    def __init__(self, metadata: dict[str,str]) -> None:
+    def __init__(self, metadata: dict[str, str]) -> None:
         if metadata["title"]:
             self.title = metadata["title"]
 
@@ -57,7 +57,8 @@ class Wikitext:
         """
         Update the processed_content from somewhere outside the class
         """
-        if processed_content: self.processed_content = processed_content
+        if processed_content:
+            self.processed_content = processed_content
 
     def extract(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
@@ -80,8 +81,10 @@ class Wikitext:
             self._template_to_object(task)
         elif isinstance(task, LinkTask):
             self._link_to_object(task)
-        else:
+        elif isinstance(task, TagTask):
             self._tag_to_object(task)
+        else:
+            raise ValueError("task must be TemplateTask or LinkTask or TagTask")
 
     def apply_task(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
@@ -272,8 +275,7 @@ class Wikitext:
                 if prev_char_pos < 0 or tmp_str[prev_char_pos] not in [left_mark]:
                     start = pos + 1
                     continue
-                if tmp_str[pos] in [left_mark] and tmp_str[pos - 1] in [left_mark] and tmp_str[pos - 2] not in [
-                    left_mark]:
+                if tmp_str[pos] in [left_mark] and tmp_str[pos - 1] in [left_mark] and tmp_str[pos - 2] not in [left_mark]:
                     prev_char_pos -= 1
                 # Check if it is A template but not PART of another template - Part RIGHT
                 next_char_pos = pos + len(name)
