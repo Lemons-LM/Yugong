@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+import os
 
 from src.Yugong.utils.path_helper import PROJECT_ROOT
 
@@ -16,7 +17,9 @@ class Logger:
     log_path: Path = None
 
     def __init__(self):
-        time: str = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if os.name == 'nt':
+            time = time.replace(":", "-")  # Windows cannot use ':' in file names   
         self.log_path = PROJECT_ROOT / "logs" / time
         self.log_path.mkdir(parents=True, exist_ok=True)
         self.log_summary(f"Yugong program for cleaning legacy syntax of mediawiki log. \nStarting at {time}\n\n")
@@ -24,7 +27,7 @@ class Logger:
     def log_step(self, *, directory: str,file_name: str, content: str):
         if not content or not file_name:
             raise ValueError("file_name and content cannot be empty")
-        # 在打开文件前创建目录
+        # create directory if not exist before opening the file
         (self.log_path / directory).mkdir(parents=True, exist_ok=True)
         with open(self.log_path / directory / f"{file_name}.log", "w") as f:
             f.write(content)
