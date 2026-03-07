@@ -1,3 +1,5 @@
+# Contributing Guide
+
 ## Code Style and Contribution Guidelines
 
 1. **Use Type Hints Everywhere**  
@@ -17,10 +19,11 @@
    - Require extension authors to use `.test()` after they "made a brick"
    - If an extension fails validation or testing, **prevent it from being loaded or executed**, and provide a clear, actionable error message.
 
-5. **Safety Comes First**    
+5. **Safety Comes First**
     We don't want to make vandalism to the wiki, even more than to contribute. If something fails the test, make sure the entire program won't execute.
 
 ## Jobs
+
 - [ ] Design Tag Arch
 - [ ] Fill the code which has doc strs
   - [ ] models

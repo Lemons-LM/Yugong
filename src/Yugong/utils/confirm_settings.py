@@ -17,7 +17,7 @@ def confirm_settings():
                            "Do you know that? (y/n): ").lower()
     if if_know_to_use not in ["y", "yes"]:
         print("Goodbye")
-        return
+        exit(0)
 
     setting_list_str = []
     for attr_name in dir(settings):
@@ -31,7 +31,8 @@ def confirm_settings():
         f"The following settings are confirmed:\n{setting_str}\nDo you want to continue? (y/n): ").lower()
     if if_confirmed_job not in ["y", "yes"]:
         print("Please check again the settings.toml")
-        return
+        exit(0)
+
 
     if settings.log_level >= 1:
         logger.log_summary(f"## Settings\n\n{setting_str}")
