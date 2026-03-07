@@ -8,4 +8,4 @@ def find_project_root(marker_files: list = ["pyproject.toml", "settings.toml", "
             return parent
     raise FileNotFoundError("Project root not found")
 
-PROJECT_ROOT = find_project_root()
+PROJECT_ROOT: Path = find_project_root()
