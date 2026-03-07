@@ -22,7 +22,9 @@ class WikiInstance:
     is_available: bool = False
 
     def __init__(self):
-        return
+        # BUG: if we run "yugong.py" it may cause TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
+        #      for its no settings when initing.
+        pass
 
     def _get_request(self, *, url: str, params: dict=None) -> requests.Response:
         headers: dict[str, str] = {
