@@ -83,12 +83,12 @@ class Wikitext:
         else:
             self._tag_to_object(task)
 
-    def apply_task(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
+    def apply_task(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         Apply changes defined in tasks
         """
 
-    def to_str_list(self, *, task: TemplateTask or LinkTask or TagTask) -> None:
+    def to_str_list(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         Convert obj_list to str_list
         """
@@ -186,7 +186,7 @@ class Wikitext:
                 replacement = f'\\1{add_str}'
                 self.processed_content = re.sub(pattern, replacement, self.processed_content)
 
-    def do(self, task: TemplateTask or LinkTask or TagTask) -> None:
+    def do(self, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         Do different jobs via different data types.
         [check_dangerous] -> [extract] -> [to_object] ->
