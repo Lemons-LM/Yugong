@@ -63,23 +63,18 @@ def _process_single_page(page_name: str):
     content: str =wiki_instance.get_content(page_name=page_name)
     wikitext.set_content(content)
     step_count: int = 1
-    if settings.log_level >= 2:
-        logger.log_step(directory=page_name,file_name="000_before_process", content=content)
-    if settings.log_level >= 1:
-        logger.log_summary(f"\n\nPage name: {page_name}\nEnabled extensions:\n")
+    logger.log_step(directory=page_name,file_name="000_before_process", content=content)
+    logger.log_summary(f"\n\nPage name: {page_name}\nEnabled extensions:\n")
     print(f"Begin processing {page_name}:")
     for job in JOBS:
         wikitext_new: Wikitext = job(wikitext)
         if wikitext_new.processed_content != wikitext.processed_content:
             wikitext.update(wikitext_new.processed_content)
-            if settings.log_level >= 1:
-                logger.log_summary(f'"{job.__name__}", ')
-            if settings.log_level >= 3:
-                logger.log_step(directory=page_name,file_name=f"{step_count:03d}_after_{job.__name__}", content=wikitext.processed_content)
+            logger.log_summary(f'"{job.__name__}", ')
+            logger.log_step(directory=page_name,file_name=f"{step_count:03d}_after_{job.__name__}", content=wikitext.processed_content,is_debug=True)
             step_count += 1
 
-    if settings.log_level >= 2:
-        logger.log_step(directory=page_name,file_name="999_after_process", content=wikitext.processed_content)
+    logger.log_step(directory=page_name,file_name="999_after_process", content=wikitext.processed_content)
 
     if wikitext.processed_content != content:
         if settings.submit_changes:

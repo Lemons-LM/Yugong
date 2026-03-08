@@ -29,6 +29,7 @@
   - [ ] models
     - [ ] [link_task.py](src/Yugong/models/link_task.py)
     - [x] [logger.py](src/Yugong/models/logger.py)
+      - [ ] Change the error handling in other files to the implementation in this file.
     - [x] [marks.py](src/Yugong/models/marks.py)
     - [x] [settings.py](src/Yugong/models/settings.py)
     - [ ] [tag_task.py](src/Yugong/models/tag_task.py)

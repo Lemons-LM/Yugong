@@ -11,8 +11,8 @@ class Logger:
     #TODO: Logger
     Log level (default to 1, in settings.toml default to 3):
         0: No logs at all
-        1: Log "Which extension has been used in which page, and processed which page, which errors" aka log_error
-        2: Leven 1 and "The original and last processed version's contents" aka log_summary
+        1: Log "Which extension has been used in which page, and processed which page, which errors"  aka log_summary and log_error
+        2: Level 1 and "The original and last processed version's contents" aka log_step
         3: Level 1 and "Original and every step of process/extension, for debugging" aka log_step
     """
     log_path: Path = None
@@ -35,15 +35,15 @@ class Logger:
         with open(self.log_path / file_name, writing_type) as f:
             f.write(content)
     
-    def log_step(self, *, directory: str,file_name: str, content: str):
-        if settings.log_level < 3:
+    def log_step(self, *, directory: str,file_name: str, content: str, is_debug: bool = False):
+        if (settings.log_level < 2 and not is_debug) or (settings.log_level < 3 and is_debug):
             return
         if not content or not file_name:
             raise ValueError("file_name and content cannot be empty")
         self._log(directory=directory,file_name=file_name, content=content, writing_type='w')
 
     def log_summary(self, content: str):
-        if settings.log_level < 2:
+        if settings.log_level < 1:
             return
         self._log(directory=None, file_name="logs.log", content=content, writing_type='a')
     

@@ -34,8 +34,7 @@ def confirm_settings():
         exit(0)
 
 
-    if settings.log_level >= 1:
-        logger.log_summary(f"## Settings\n\n{setting_str}")
+    logger.log_summary(f"## Settings\n\n{setting_str}")
 
     steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "Extensions"
     for f in steps_path.glob("*.py"):
@@ -51,7 +50,6 @@ def confirm_settings():
     if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/n): ")
     if if_confirmed_extensions not in ["y", "yes"]:
         print("Please check again the settings.toml")
-        return
+        exit(0)
 
-    if settings.log_level >= 1:
-        logger.log_summary(f"## Extensions\n\n{intro_strs}")
+    logger.log_summary(f"## Extensions\n\n{intro_strs}")
