@@ -101,7 +101,6 @@ class WikiInstance:
         self.rest_endpoint = self.api_endpoint + 'rest.php'
         if self.is_owner_only:
             self.access_token = os.getenv('MW_OAUTH_TOKEN') or None
-        #TODO: Get OAuth token from endpoint, but this isn't a MVP phase job.
         if self.access_token:
             try:
                 headers: dict[str, str] = {'User-Agent': self.user_agent}
@@ -122,6 +121,9 @@ class WikiInstance:
                     self.permissions = response_data.get('query', {}).get('userinfo', {}).get('groups', [])
             except Exception as e:
                 print(f"Error fetching group info: {e}")
+        else:
+            #TODO: Get OAuth token from endpoint, but this isn't a MVP phase job.
+            raise ValueError("(TODO) We cannot get OAuth token from endpoint now, so please provide OAuth token now") 
         self.is_available = True
 
     def get_todo_list(self) -> list[str]:
