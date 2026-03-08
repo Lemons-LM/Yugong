@@ -14,7 +14,7 @@ def confirm_settings():
                            "You are solely responsible for ensuring that your use of this software complies with all applicable laws and regulations in your jurisdiction.\n"
                            "Including but not limited to the laws of the People's Republic of China.\n"
                            "Besides that, it is a free software, which means you never need to pay for it.\n"
-                           "Do you know that? (y/n): ").lower()
+                           "Do you know that? (y/[n]): ").lower()
     if if_know_to_use not in ["y", "yes"]:
         print("Goodbye")
         exit(0)
@@ -28,13 +28,13 @@ def confirm_settings():
     setting_str = "\n".join(setting_list_str)
 
     if_confirmed_job = input(
-        f"The following settings are confirmed:\n{setting_str}\nDo you want to continue? (y/n): ").lower()
+        f"The following settings are confirmed:\n{setting_str}\nDo you want to continue? (y/[n]): ").lower()
     if if_confirmed_job not in ["y", "yes"]:
         print("Please check again the settings.toml")
         exit(0)
 
 
-    logger.log_summary(f"## Settings\n\n{setting_str}")
+    logger.log_summary(f"## Settings\n\n{setting_str}\n")
 
     steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "Extensions"
     for f in steps_path.glob("*.py"):
@@ -47,9 +47,9 @@ def confirm_settings():
         intro_str: str = f()
         intro_strs += f"{intro_str}\n"
 
-    if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/n): ")
+    if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/[n]): ").lower()
     if if_confirmed_extensions not in ["y", "yes"]:
         print("Please check again the settings.toml")
         exit(0)
 
-    logger.log_summary(f"## Extensions\n\n{intro_strs}")
+    logger.log_summary(f"## Extensions\n\n{intro_strs}\n")

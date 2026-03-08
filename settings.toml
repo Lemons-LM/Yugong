@@ -25,3 +25,4 @@ enable_cangjie = false
 request_max_tries = 3
 edit_comment = "Edited by Yugong (gh:Lemons-LM/Yugong) program"
 log_level = 3
+log_timestamp = true

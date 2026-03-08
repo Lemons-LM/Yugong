@@ -14,6 +14,7 @@ class Logger:
         1: Log "Which extension has been used in which page, and processed which page, which errors"  aka log_summary and log_error
         2: Level 1 and "The original and last processed version's contents" aka log_step
         3: Level 1 and "Original and every step of process/extension, for debugging" aka log_step
+    auto add a '\n'
     """
     log_path: Path = None
 
@@ -26,14 +27,17 @@ class Logger:
         self.log_summary(f"Yugong program for cleaning legacy syntax of mediawiki log. \nStarting at {time}\n\n")
     
     def _log(self,directory: str,file_name: str, content: str, writing_type:str='a'):
-        outputpath:str=""
+        outputpath: Path=None
         if directory is None:
-            outputpath=self.log_path
+            outputpath = self.log_path
         else:
             outputpath = self.log_path / directory
             outputpath.mkdir(parents=True, exist_ok=True)
         with open(self.log_path / file_name, writing_type) as f:
-            f.write(content)
+            if settings.log_timestamp:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"[{timestamp}] ")
+            f.write(content+'\n')
     
     def log_step(self, *, directory: str,file_name: str, content: str, is_debug: bool = False):
         if (settings.log_level < 2 and not is_debug) or (settings.log_level < 3 and is_debug):

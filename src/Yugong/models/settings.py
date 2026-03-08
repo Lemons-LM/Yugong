@@ -24,6 +24,7 @@ class Settings:
     overwrite_para_name: bool = True
     overwrite_template_name: bool = True
     log_level: int = 1
+    log_timestamp: bool = True
     wiki_tag: str = 'wiki'
     submit_changes: bool = False
 
