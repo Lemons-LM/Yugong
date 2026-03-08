@@ -35,6 +35,7 @@
     - [x] [template.py](src/Yugong/models/template.py)
     - [ ] [template_parameter.py](src/Yugong/models/template_parameter_task.py)
     - [x] [wiki.py](src/Yugong/models/wiki.py)
+      - [ ] (Low priority) Login methods other than OAuth token.
     - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
   - [x] utils
     - [x] [confirm_settings.py](src/Yugong/utils/confirm_settings.py)
