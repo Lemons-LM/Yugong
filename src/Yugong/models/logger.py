@@ -1,4 +1,5 @@
 from pathlib import Path
+from src.Yugong.models.settings import settings
 from datetime import datetime
 import os
 
@@ -15,7 +16,6 @@ class Logger:
         3: Level 1 and "Original and every step of process/extension, for debugging" aka log_step
     """
     log_path: Path = None
-    log_level: int = 1
 
     def __init__(self):
         time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -36,19 +36,19 @@ class Logger:
             f.write(content)
     
     def log_step(self, *, directory: str,file_name: str, content: str):
-        if self.log_level < 3:
+        if settings.log_level < 3:
             return
         if not content or not file_name:
             raise ValueError("file_name and content cannot be empty")
         self._log(directory=directory,file_name=file_name, content=content, writing_type='w')
 
     def log_summary(self, content: str):
-        if self.log_level < 2:
+        if settings.log_level < 2:
             return
         self._log(directory=None, file_name="logs.log", content=content, writing_type='a')
     
     def log_error(self, content: str):
-        if self.log_level < 1:
+        if settings.log_level < 1:
             return
         self._log(directory=None, file_name="logs.log", content=content, writing_type='a')
 
