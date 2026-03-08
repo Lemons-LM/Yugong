@@ -11,6 +11,7 @@ from src.Yugong.utils.mark_job_intro import JOBS
 
 MANIFEST = {}
 def do_jobs():
+    wiki_instance.update_settings()
     wiki_instance.init_instance()
     global MANIFEST
     todo_list: list[str] = wiki_instance.get_todo_list()
