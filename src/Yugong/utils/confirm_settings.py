@@ -7,7 +7,7 @@ from src.Yugong.utils.mark_job_intro import INTROS
 from src.Yugong.utils.path_helper import PROJECT_ROOT
 
 
-def confirm_settings():
+def confirm_settings() -> None:
     if_know_to_use = input("YuGong is a tool to help you to do some jobs on specific wiki.\n"
                            "It it released \"as-is\", so we won't guarantee it works as expected.\n"
                            "You need to take full responsibility to using the program.\n"

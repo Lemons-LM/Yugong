@@ -18,7 +18,7 @@ class Logger:
     """
     log_path: Path = None
 
-    def __init__(self):
+    def __init__(self) -> None:
         time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         if os.name == 'nt':
             time = time.replace(":", "-")  # Windows cannot use ':' in file names   
@@ -26,7 +26,7 @@ class Logger:
         self.log_path.mkdir(parents=True, exist_ok=True)
         self.log_summary(f"Yugong program for cleaning legacy syntax of mediawiki log. \nStarting at {time}\n\n")
     
-    def _log(self,directory: str,file_name: str, content: str, writing_type:str='a'):
+    def _log(self,directory: str,file_name: str, content: str, writing_type:str='a') -> None:
         outputpath: Path=None
         if directory is None:
             outputpath = self.log_path
@@ -39,23 +39,21 @@ class Logger:
                 f.write(f"[{timestamp}] ")
             f.write(content+'\n')
     
-    def log_step(self, *, directory: str,file_name: str, content: str, is_debug: bool = False):
+    def log_step(self, *, directory: str,file_name: str, content: str, is_debug: bool = False) -> None:
         if (settings.log_level < 2 and not is_debug) or (settings.log_level < 3 and is_debug):
             return
         if not content or not file_name:
             raise ValueError("file_name and content cannot be empty")
         self._log(directory=directory,file_name=file_name, content=content, writing_type='w')
 
-    def log_summary(self, content: str):
+    def log_summary(self, content: str) -> None:
         if settings.log_level < 1:
             return
         self._log(directory=None, file_name="logs.log", content=content, writing_type='a')
     
-    def log_error(self, content: str):
+    def log_error(self, content: str) -> None:
         if settings.log_level < 1:
             return
         self._log(directory=None, file_name="logs.log", content=content, writing_type='a')
-
-
 
 logger: Logger = Logger()

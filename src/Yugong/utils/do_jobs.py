@@ -10,7 +10,7 @@ from src.Yugong.models.wikitext import Wikitext
 from src.Yugong.utils.mark_job_intro import JOBS
 
 MANIFEST = {}
-def do_jobs():
+def do_jobs()-> None:
     wiki_instance.update_settings()
     wiki_instance.init_instance()
     global MANIFEST
@@ -57,7 +57,7 @@ def do_jobs():
 
 
 
-def _process_single_page(page_name: str):
+def _process_single_page(page_name: str) -> None:
     metadata: dict[str, str] = wiki_instance.get_metadata(page_name=page_name)
     wikitext: Wikitext = Wikitext(metadata)
     content: str =wiki_instance.get_content(page_name=page_name)

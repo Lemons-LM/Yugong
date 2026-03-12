@@ -29,10 +29,10 @@ class Settings:
     submit_changes: bool = False
 
     @classmethod
-    def set(cls, *, key: str, value: str):
+    def set(cls, *, key: str, value: str) -> None:
         setattr(cls, key, value)
 
-    def __init__(self):
+    def __init__(self) -> None:
         text_path = PROJECT_ROOT / "settings.toml"
 
         if not text_path.exists():

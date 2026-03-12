@@ -2,7 +2,7 @@ from src.Yugong.utils.confirm_settings import confirm_settings
 from src.Yugong.utils.do_jobs import do_jobs
 
 
-def yu_gong():
+def yu_gong() -> None:
     """
     [done] 1. Welcome the user to use and ask them to confirm knowing they need to take full responsibility to using the program
     [done]2. Do get_settings and ask the user to confirm the program's settings in settings.toml
