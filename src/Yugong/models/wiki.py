@@ -22,8 +22,6 @@ class WikiInstance:
     is_available: bool = False
 
     def __init__(self):
-        # BUG: if we run "yugong.py" it may cause TypeError: unsupported operand type(s) for +: 'NoneType' and 'str'
-        #      for its no settings when initing.
         pass
 
     def _get_request(self, *, url: str, params: dict=None) -> requests.Response:
@@ -101,7 +99,6 @@ class WikiInstance:
         self.rest_endpoint = self.api_endpoint + 'rest.php'
         if self.is_owner_only:
             self.access_token = os.getenv('MW_OAUTH_TOKEN') or None
-        #TODO: Get OAuth token from endpoint, but this isn't a MVP phase job.
         if self.access_token:
             try:
                 headers: dict[str, str] = {'User-Agent': self.user_agent}
@@ -120,9 +117,12 @@ class WikiInstance:
                 if group_info_get.status_code == 200:
                     response_data = group_info_get.json()
                     self.permissions = response_data.get('query', {}).get('userinfo', {}).get('groups', [])
+                    self.is_available = True
             except Exception as e:
                 print(f"Error fetching group info: {e}")
-        self.is_available = True
+        else:
+            #TODO: Get OAuth token from endpoint, but this isn't a MVP phase job.
+            raise ValueError("(TODO) We cannot get OAuth token from endpoint now, so please provide OAuth token now") 
 
     def get_todo_list(self) -> list[str]:
         """
@@ -199,6 +199,9 @@ class WikiInstance:
         response = self._get_request(url=self.action_endpoint, params=params)
 
         data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format: response is not a dictionary")
+        
         pages = data.get('query', {}).get('pages', {})
 
         for page_id, page_info in pages.items():
@@ -226,6 +229,8 @@ class WikiInstance:
         )
 
         data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Unexpected API response format: response is not a dictionary")
         return data.get('source', '')
 
     def set_content(self, wikitext: Wikitext) -> None:

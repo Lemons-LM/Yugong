@@ -311,7 +311,7 @@ class Wikitext:
     def _extract_tag(self, task: TagTask):
         pass
 
-    def _template_to_object(self, task: TemplateTask):
+    def _template_to_object(self, task: TemplateTask) -> None:
         """
         Extract the template from str to objs via task
         """

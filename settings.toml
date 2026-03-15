@@ -1,7 +1,7 @@
 # WARNING: If you don't want to change the default settings to the program, remove the line.
 # If you leave it to empty, it will throw an error!
 # Wiki settings
-api_endpoint = "" # The position of api.php/index.php/rest.php. DO NOT include the filename
+api_endpoint = "" # The position of api.php/index.php/rest.php, with a slash. DO NOT include the filename
 user_agent = ""
 is_owner_only = false  # If true, set your oauth access token in environment variables named MW_OAUTH_TOKEN
 client_id = ""
@@ -25,3 +25,4 @@ enable_cangjie = false
 request_max_tries = 3
 edit_comment = "Edited by Yugong (gh:Lemons-LM/Yugong) program"
 log_level = 3
+log_timestamp = true

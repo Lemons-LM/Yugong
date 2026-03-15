@@ -39,6 +39,8 @@ python3 main.py
 
 Set up [settings.toml](settings.toml)
 
+Note that we currently do not support login methods other than OAuth token, and OAuth token requires setting the environment variable `MW_OAUTH_TOKEN`. And now you must set `is_owner_only` to true in setting file.
+
 ## Extension Development
 
 ### Creating New Extensions
