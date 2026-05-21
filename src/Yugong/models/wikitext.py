@@ -1,3 +1,5 @@
+from tempfile import template
+
 from src.Yugong.models.link_task import LinkTask
 from src.Yugong.models.marks import Marks
 from src.Yugong.models.settings import settings
@@ -90,16 +92,29 @@ class Wikitext:
         """
         Apply changes defined in tasks
         """
+        if isinstance(task, TemplateTask):
+            self._apply_template_task(task)
+        elif isinstance(task, LinkTask):
+            self._apply_link_task(task)
+        elif isinstance(task, TagTask):
+            self._apply_tag_task(task)
 
     def to_str_list(self, *, task: TemplateTask | LinkTask | TagTask) -> None:
         """
         Convert obj_list to str_list
         """
+        if isinstance(task, TemplateTask):
+            self._template_to_str_list(task)
+        elif isinstance(task, LinkTask):
+            self._link_to_str_list(task)
+        elif isinstance(task, TagTask):
+            self._tag_to_str_list(task)
 
     def to_str(self) -> None:
         """
         Convert the whole object to a string, processed_content
         """
+        
 
     def check_dangerous(self, *, first_run: bool = False, last_run: bool = False) -> bool:
         """
@@ -316,43 +331,34 @@ class Wikitext:
         Extract the template from str to objs via task
         """
         for t_str in self.template_str_list:
-            content = t_str['content'][2:-2]
-            paras_list = content.split('|')
-            if settings.overwrite_template_name:
-                t_obj = Template(name=task.name or task.alias[0], id=t_str['id'], position_must_be_named=task.position_must_be_named)
-            else:
-                t_obj = Template(name=paras_list[0].strip() or task.alias[0], id=t_str['id'], position_must_be_named=task.position_must_be_named)
-            if not task.position_para:
-                for i, para in enumerate(paras_list[1:], 1):
-                    if '=' in para:
-                        name, value = para.split('=', 1)
-                        t_obj.add_named_para(name=name.strip(), value=value)
-                    else:
-                        if i > 1:
-                            prev_para_name = t_obj.named_paras[-1]['name']
-                            prev_para_value = t_obj.named_paras[-1]['value']
-                            t_obj.remove_last_name_para()
-                            new_value = prev_para_value + '{{|}}' + para
-                            t_obj.add_named_para(name=prev_para_name, value=new_value)
-                        else:
-                            # 如果是第一个参数且没有等号，作为位置参数处理
-                            t_obj.add_pos_para(value=para)
-            else:
-                pos: int = 1
-                for i, para in enumerate(paras_list):
-                    if '=' in para:
-                        name, value = para.split('=', 1)
-                        t_obj.add_named_para(name=name.strip(), value=value)
-                    else:
-                        t_obj.add_pos_para(position=pos, value=para)
-                        pos += 1
-
+            t_obj: Template = Template()
+            t_obj.parse(template_dict=t_str['content'], task=task)
             self.template_obj_list.append(t_obj)
 
     def _link_to_object(self, task: LinkTask):
         pass
 
     def _tag_to_object(self, task: TagTask):
+        pass
+
+    def _apply_template_task(self, task):
+        processed: list[Template] = []
+        for template in self.template_obj_list:
+            processed.append(template.apply(task))
+
+    def _apply_link_task(self, task):
+        pass
+
+    def _apply_tag_task(self, task):
+        pass
+
+    def _template_to_str_list(self, task):
+        pass
+
+    def _link_to_str_list(self, task):
+        pass
+
+    def _tag_to_str_list(self, task):
         pass
 
 
