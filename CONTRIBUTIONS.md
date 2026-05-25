@@ -43,7 +43,7 @@
     - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
   - [x] utils
     - [x] [confirm_settings.py](src/Yugong/utils/confirm_settings.py)
-    - [x] [do_jobs.py](src/Yugong/utils/do_jobs.py)
+    - [x] [do_jobs.py](src/Yugong/processor/do_jobs.py)
     - [x] [mark_job_intro.py](src/Yugong/utils/mark_job_intro.py)
     - [x] [path_helper.py](src/Yugong/utils/path_helper.py)
   - [x] [yu_gong.py](src/Yugong/yu_gong.py)

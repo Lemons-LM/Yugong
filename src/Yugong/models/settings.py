@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import toml
 
 from src.Yugong.utils.path_helper import PROJECT_ROOT

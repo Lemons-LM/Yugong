@@ -1,0 +1,16 @@
+# Template Processor Example
+[metadata]
+introduction = "This is a template processor example" # Basic Intro
+apply_websites = ["example.com"] # Leave empty to apply to all websites
+names = ["<NAME>", "<NAME>"] # List of names, the first one is the preferred one
+rename = true # Whether change the name to the preffered one
+
+[[params]] # Named Parameter
+names = ["<NAME>", "<NAME>"] # List of names, you may use regex, the first one is the preferred one. Use 1 as annoymous para 1
+new_name = "<NAME>" # New name if rename
+rename = true # Whether change the name to the preffered one
+delete = true # Whether delete the element
+regex_if_1 = "" # Regex to match
+regex_if_mode_1 = true # Mode, true means matched, default to true
+regex_from_1 = "" # Regex replacement to match
+regex_to_1 = "" # Regex replacement to replace

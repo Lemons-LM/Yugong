@@ -7,6 +7,7 @@ import requests
 from src.Yugong.models.settings import settings
 from src.Yugong.models.wikitext import Wikitext
 
+#TODO: Use pywikibot if available
 
 class WikiInstance:
     api_endpoint: str = None

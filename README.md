@@ -49,7 +49,7 @@ Note that we currently do not support login methods other than OAuth token, and 
 
 Follow these steps to create custom extensions:
 
-1. Copy [example.py](src/Yugong/Extensions/example.py) in the `Extensions` directory and rename it
+1. Copy [example.py](src/Yugong/extensions/example.py) in the `Extensions` directory and rename it
 2. Modify the function name and task definition
 3. Implement specific template processing logic
 4. Add task introduction description

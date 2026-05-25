@@ -1,5 +1,4 @@
 import importlib
-from pathlib import Path
 
 from src.Yugong.models.logger import logger
 from src.Yugong.models.settings import settings
@@ -36,13 +35,13 @@ def confirm_settings() -> None:
 
     logger.log_summary(f"## Settings\n\n{setting_str}\n")
 
-    steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "Extensions"
+    steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "extensions"
     for f in steps_path.glob("*.py"):
         if f.name != "__init__.py":
-            module_name = f"src.Yugong.Extensions.{f.stem}"
+            module_name = f"src.Yugong.extensions.{f.stem}"
             importlib.import_module(module_name)
 
-    intro_strs: str = "The following Extensions are loaded:\n"
+    intro_strs: str = "The following extensions are loaded:\n"
     for f in INTROS:
         intro_str: str = f()
         intro_strs += f"{intro_str}\n"
@@ -52,4 +51,4 @@ def confirm_settings() -> None:
         print("Please check again the settings.toml")
         exit(0)
 
-    logger.log_summary(f"## Extensions\n\n{intro_strs}\n")
+    logger.log_summary(f"## extensions\n\n{intro_strs}\n")
