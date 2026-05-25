@@ -1,5 +1,8 @@
 # Contributing Guide
 
+1. You may want to see [TODO.md](TODO.md)
+2. There is a new `dev` branch now! We try to use `mwparserfromhell` there instead of the current one Yugong developed.
+
 ## Code Style and Contribution Guidelines
 
 1. **Use Type Hints Everywhere**  

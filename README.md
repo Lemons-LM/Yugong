@@ -1,5 +1,7 @@
 # YuGong Bot
 
+> There is a new `dev` branch now! We try to use `mwparserfromhell` there instead of the current one Yugong developed.
+
 ## Project Overview
 
 YuGong is a Python-based automated wiki editing tool designed to help users batch process page content on specific wiki sites. The project provides a flexible extension mechanism that allows users to customize various template processing tasks.

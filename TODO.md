@@ -1,2 +1,2 @@
 - [ ] The search on the Wikitext class's finding template method is 100% case-insensitive, because it's hard to make it case-insensitive for 1st ltr only and case-sensitive for the else[^1].It could be done by just searching twice separately...(Cannot remember whether it's done)
-- [ ] [IMPORTANT!] Change the Wikitext Parser to `mwparserfromhell` and Wiki's interact method to `pywikibot` unless there's something they cannot do
+- [ ] [IMPORTANT!] Change the Wikitext Parser to `mwparserfromhell` and Wiki's interact method to `pywikibot` unless there's something they cannot do. -- Use dev branch to write it.
