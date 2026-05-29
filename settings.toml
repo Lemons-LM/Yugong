@@ -14,6 +14,7 @@ linked_template = ""
 category = ""
 
 # Settings/Behavior
+bypass_confirm_settings = false
 submit_changes = false
 safe_tag_list = []  # Change to a list of safe tags
 unsafe_tag_list = [] # Both safe_tag_list and unsafe_tag_list can't be used at same time

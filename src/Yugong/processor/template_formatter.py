@@ -8,21 +8,48 @@ import mwparserfromhell as mph
 ##       We've designed a example toml already
 
 def format_template(wikitext: Wikitext) -> None:
+    code: mph.wikicode.Wikicode = wikitext.wikitext
+    for template in code.filter_templates():
+        raw_name = _safe_capitalize(template.name)
+        rule = RULES.get(raw_name)
+        if rule:
+            apply_template_rule(template=template, rule=rule)
+
+def apply_template_rule(template: mph.wikicode.Template, rule: dict) -> None:
+    # TODO: Finish this
+    pass
+
+def _safe_capitalize(text):
+    if not text:
+        return
+    if text[0].isalpha() and text[0].isupper():
+        return text
+    if not text[0].isalpha():
+        return text
+    text = text.strip()
+    return text[0].upper() + text[1:]
+
+def get_ruleset():
+    def add_rule(json_rule: dict, file_name: str):
+        print("Apply rule: ", file_name)
+        print("Introduction: ", json_rule["introduction"])
+        for name in json_rule["names"]:
+            if name:
+                RULES[_safe_capitalize(name)] = {
+                    "file_name": file_name,
+                    "template_level": json_rule["template_level"],
+                    "params": json_rule["params"],
+                }
     for file in PROJECT_ROOT.glob("template_rules/*.toml"):
         rule = toml.load(file)
-        apply = False
+        rule["file_name"] = file.name
         if rule["apply_websites"]:
             for website in rule["apply_websites"]:
                 if check_same_website(website):
-                    apply = True
-                    break
-        else:
-            apply = True
-        if not apply:
+                    add_rule(rule, file.name)
             continue
+        else:
+            add_rule(rule, file.name)
 
-        wikicode = mph.parse(wikitext.wikitext)
-        templates = wikicode.filter_templates()
-        for name in rule["names"]:
-            pass
-        #TODO: New Arch: First load all rules as a ruleset and a list, then apply them if match list
+
+RULES = {}

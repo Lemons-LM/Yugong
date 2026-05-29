@@ -2,11 +2,14 @@ import importlib
 
 from src.Yugong.models.logger import logger
 from src.Yugong.models.settings import settings
+from src.Yugong.processor.template_formatter import get_ruleset
 from src.Yugong.utils.mark_job_intro import INTROS
 from src.Yugong.utils.path_helper import PROJECT_ROOT
 
 
-def confirm_settings() -> None:
+def confirm_settings(all_confirmed: bool = False) -> None:
+    if all_confirmed or settings.bypass_confirm_settings:
+        return
     if_know_to_use = input("YuGong is a tool to help you to do some jobs on specific wiki.\n"
                            "It it released \"as-is\", so we won't guarantee it works as expected.\n"
                            "You need to take full responsibility to using the program.\n"
@@ -49,6 +52,12 @@ def confirm_settings() -> None:
     if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/[n]): ").lower()
     if if_confirmed_extensions not in ["y", "yes"]:
         print("Please check again the settings.toml")
+        exit(0)
+
+    print("The following Template TOML rules are loaded:\n")
+    get_ruleset()
+    if input("Do you want to continue? (y/[n]): ").lower() not in ["y", "yes"]:
+        print("Please check again the rulesets")
         exit(0)
 
     logger.log_summary(f"## extensions\n\n{intro_strs}\n")
