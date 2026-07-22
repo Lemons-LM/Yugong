@@ -1,7 +1,7 @@
 import json
 import os
 
-from src.wikibot.core.logger import BotLogger
+from src.Yugong.core.logger import BotLogger
 
 
 class Manifest:

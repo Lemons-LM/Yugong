@@ -7,8 +7,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from src.wikibot.core.logger import BotLogger
-from src.wikibot.utilities.path_helper import PROJECT_ROOT
+from src.Yugong.core.logger import BotLogger
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
 class BotDB:
@@ -48,13 +48,6 @@ class BotDB:
         4. preferences - 用户偏好设置
            - username (TEXT, 主键): 用户名
            - settings (TEXT, JSON对象): 设置内容字典
-
-    使用示例：
-        >>> db = BotDB()
-        >>> db.insert("template", {"name": "Navbox", "type": "navbox", "aliases": ["导航框"]})
-        >>> results = db.search("template", conditions={"type": "navbox"})
-        >>> db.update("template", {"purpose": "导航"}, conditions={"name": "Navbox"})
-        >>> db.delete("template", conditions={"name": "Navbox"})
     """
 
     def __init__(self, db_path: Path | None = None):
@@ -93,44 +86,25 @@ class BotDB:
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS template (
-                    name TEXT PRIMARY KEY,
-                    aliases TEXT DEFAULT '[]',
-                    type TEXT NOT NULL,
-                    purpose TEXT,
-                    usage TEXT,
-                    scope TEXT
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    target TEXT NOT NULL
                 )
             """)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS alias (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    namespace TEXT NOT NULL,
                     title TEXT NOT NULL,
-                    target_table TEXT NOT NULL,
-                    target_key TEXT NOT NULL,
-                    UNIQUE(namespace, title)
+                    target TEXT NOT NULL
                 )
             """)
 
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS talks (
+                CREATE TABLE IF NOT EXISTS category (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    section_title TEXT NOT NULL,
-                    page TEXT NOT NULL,
-                    start_time TEXT,
-                    end_time TEXT,
-                    last_reply_time TEXT,
-                    participants TEXT DEFAULT '[]',
-                    is_closed INTEGER DEFAULT 0,
-                    UNIQUE(section_title, page)
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS preferences (
-                    username TEXT PRIMARY KEY,
-                    settings TEXT NOT NULL
+                    title TEXT NOT NULL,
+                    target TEXT NOT NULL
                 )
             """)
 

@@ -1,6 +1,6 @@
 import toml
 
-from src.Yugong.utils.path_helper import PROJECT_ROOT
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
 class Settings:

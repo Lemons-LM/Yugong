@@ -4,7 +4,7 @@ import traceback
 from email.header import Header
 from email.mime.text import MIMEText
 
-from src.wikibot.core.logger import BotLogger
+from src.Yugong.core.logger import BotLogger
 
 
 class Mailer:

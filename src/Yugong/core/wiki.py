@@ -11,10 +11,12 @@ import pywikibot
 from pywikibot import config
 from pywikibot.comms import http
 
-from src.wikibot.core.logger import BotLogger
-from src.wikibot.core.mailer import mailer
-from src.wikibot.utilities.link import get_user_talk
-from src.wikibot.utilities.path_helper import PROJECT_ROOT
+from src.Yugong.core.logger import BotLogger
+from src.Yugong.core.mailer import mailer
+from src.Yugong.utilities.link import get_user_talk
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
+
+OAUTH_TOKEN = os.environ.get("MW_BOT_OAUTH_TOKEN")
 
 class Wiki:
     def __init__(self, bot_name: str, api_endpoint: str = "https://www.qiuwenbaike.cn/api.php"):
@@ -54,7 +56,7 @@ class Wiki:
             "format": "json"
         }
 
-        response = http.session.get(self.api_endpoint, params=params)
+        response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": "Qiuwen/1.1 Lemonade-bot/Yugong (Check suppressed)", "Authorization": f"Bearer {OAUTH_TOKEN}"})
         if not response:
             return []
 
@@ -134,7 +136,7 @@ class Wiki:
                 "rvprop": "ids",
                 "format": "json"
             }
-            response = http.session.get(self.api_endpoint, params=params)
+            response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": "Qiuwen/1.1 Lemonade-bot/Yugong (Check suppressed)", "Authorization": f"Bearer {OAUTH_TOKEN}"})
             if not response:
                 return
             data = response.json()["query"]["pages"]
@@ -205,8 +207,6 @@ class Wiki:
 wiki = Wiki(bot_name="Lemonade-bot")
 
 _original_request = http.session.request
-
-OAUTH_TOKEN = os.environ.get("MW_BOT_OAUTH_TOKEN")
 
 def guarded_request(method, url, *args, **kwargs):
     # 这里拿不到 self，所以需要全局 wiki 实例

@@ -1,4 +1,4 @@
-from src.Yugong.models.settings import settings
+from src.Yugong.core.settings import settings
 
 
 def check_same_website(url: str) -> bool:

@@ -3,7 +3,7 @@ import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from src.wikibot.utilities.path_helper import PROJECT_ROOT
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 _LOGGERS: dict[str, "BotLogger"] = {}
 _LOG_DIR = os.path.join(PROJECT_ROOT, "logs")
@@ -40,3 +40,4 @@ def get_logger(name: str, level: int = logging.DEBUG) -> BotLogger:
 
 
 utilities_logger = get_logger("utilities")
+logger = get_logger("Yugong")

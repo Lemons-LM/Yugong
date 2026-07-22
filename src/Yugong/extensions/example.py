@@ -1,5 +1,5 @@
-from src.Yugong.models.wikitext import Wikitext
-from src.Yugong.utils.mark_job_intro import job, intro
+from src.Yugong.core.wikitext import Wikitext
+from src.Yugong.utilities.mark_job_intro import job, intro
 
 @job
 def template_example_job(wikitext: Wikitext) -> Wikitext:

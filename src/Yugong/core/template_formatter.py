@@ -1,8 +1,8 @@
 import toml
 
-from src.Yugong.models.wikitext import Wikitext
-from src.Yugong.utils.check_same_website import check_same_website
-from src.Yugong.utils.path_helper import PROJECT_ROOT
+from src.Yugong.core.wikitext import Wikitext
+from src.Yugong.utilities.check_same_website import check_same_website
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
 import mwparserfromhell as mph
 
 class TemplateFormatter:

@@ -1,10 +1,10 @@
 import importlib
 
-from src.Yugong.models.logger import logger
-from src.Yugong.models.settings import settings
-from src.Yugong.models.template_formatter import formatter
-from src.Yugong.utils.mark_job_intro import INTROS
-from src.Yugong.utils.path_helper import PROJECT_ROOT
+from src.Yugong.core.logger import logger
+from src.Yugong.core.settings import settings
+from src.Yugong.core.template_formatter import formatter
+from src.Yugong.utilities.mark_job_intro import INTROS
+from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
 def confirm_settings(all_confirmed: bool = False) -> None:
@@ -36,7 +36,7 @@ def confirm_settings(all_confirmed: bool = False) -> None:
         exit(0)
 
 
-    logger.log_summary(f"## Settings\n\n{setting_str}\n")
+    logger.info(f"Settings confirmed:\n{setting_str}")
 
     steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "extensions"
     for f in steps_path.glob("*.py"):
@@ -60,4 +60,4 @@ def confirm_settings(all_confirmed: bool = False) -> None:
         print("Please check again the rulesets")
         exit(0)
 
-    logger.log_summary(f"## extensions\n\n{intro_strs}\n")
+    logger.info(f"Extensions loaded:\n{intro_strs}")

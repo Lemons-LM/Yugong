@@ -31,21 +31,21 @@
 - [ ] Fill the code which has doc strs
   - [ ] models
     - [ ] [link_task.py](src/Yugong/models/link_task.py)
-    - [x] [logger.py](src/Yugong/models/logger.py)
+    - [x] [logger.py](src/Yugong/core/logger.py)
       - [ ] Change the error handling in other files to the implementation in this file.
     - [x] [marks.py](src/Yugong/models/marks.py)
-    - [x] [settings.py](src/Yugong/models/settings.py)
+    - [x] [settings.py](src/Yugong/core/settings.py)
     - [ ] [tag_task.py](src/Yugong/models/tag_task.py)
     - [x] [template.py](src/Yugong/models/template.py)
     - [ ] [template_parameter.py](src/Yugong/models/template_parameter_task.py)
-    - [x] [wiki.py](src/Yugong/models/wiki.py)
+    - [x] [wiki.py](src/Yugong/core/wiki.py)
       - [ ] (Low priority) Login methods other than OAuth token.
-    - [ ] [wikitext](src/Yugong/models/wikitext.py) (Important!)
+    - [ ] [wikitext](src/Yugong/core/wikitext.py) (Important!)
   - [x] utils
-    - [x] [confirm_settings.py](src/Yugong/utils/confirm_settings.py)
+    - [x] [confirm_settings.py](src/Yugong/utilities/confirm_settings.py)
     - [x] [do_jobs.py](src/Yugong/processor/do_jobs.py)
-    - [x] [mark_job_intro.py](src/Yugong/utils/mark_job_intro.py)
-    - [x] [path_helper.py](src/Yugong/utils/path_helper.py)
+    - [x] [mark_job_intro.py](src/Yugong/utilities/mark_job_intro.py)
+    - [x] [path_helper.py](src/Yugong/utilities/path_helper.py)
   - [x] [yu_gong.py](src/Yugong/yu_gong.py)
 - [ ] Check logic:
   - [ ] We currently removed a function which ignores what python's comparing logic is. So we might need to check if any logic is wrong.
