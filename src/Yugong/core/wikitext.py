@@ -15,19 +15,19 @@ class Wikitext:
     wikitext: mph.wikicode.Wikicode = None
 
     def __init__(self, metadata: dict[str, str]) -> None:
-        if metadata["title"]:
+        if metadata.get("title"):
             self.title = metadata["title"]
 
-        if metadata["revid"]:
+        if metadata.get("revid"):
             self.revid = int(metadata["revid"])
 
-        if metadata["page_id"]:
+        if metadata.get("pageid"):
             self.page_id = int(metadata["pageid"])
 
-        if metadata["namespace"]:
+        if metadata.get("namespace"):
             self.namespace = int(metadata["namespace"])
 
-        if metadata["permission"]:
+        if metadata.get("permission"):
             self.permission = metadata["permission"]
 
     def __str__(self):

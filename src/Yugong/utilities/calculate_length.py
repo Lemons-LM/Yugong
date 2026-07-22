@@ -83,12 +83,12 @@ def remove_invisible(text: str) -> str:
     return text.translate(REMOVE_TABLE)
 
 def strip_invisible(text: str) -> str:
-    # 方式 A：列表推导式（最直观）
+    # Approach A: list comprehension (simplest)
     return ''.join(ch for ch in text if ch.isprintable() and not ch.isspace())
 
 
 def text_length(text: str) -> float:
-    """计算普通文本长度"""
+    """Calculate plain text length."""
     total = 0.0
     # print("NAME:", text_length.__name__)
     # print("INPUT: ", text)
@@ -104,7 +104,7 @@ def text_length(text: str) -> float:
 
 
 def code_length(code) -> float:
-    """计算 Wikicode 或 NodeList"""
+    """Calculate the effective length of a Wikicode or NodeList."""
     # print("NAME:", code_length.__name__)
     # print("INPUT: ", code)
 
@@ -122,7 +122,7 @@ def code_length(code) -> float:
 
 
 def node_length(node) -> float:
-    """递归计算单个 Node"""
+    """Recursively calculate the length of a single Node."""
 
     if isinstance(node, Text):
         return text_length(str(node))
@@ -178,11 +178,11 @@ def node_length(node) -> float:
 
 def is_infobox(template: Template) -> bool:
     """
-    判断一个模板是否像 Infobox。
+    Determine whether a template looks like an Infobox.
 
-    条件：
-    - 至少 3 个命名参数
-    - 没有匿名参数
+    Conditions:
+    - At least 3 named parameters
+    - No anonymous parameters
     """
     # print("NAME:", is_infobox.__name__)
     # print("INPUT: ", template)
@@ -200,13 +200,13 @@ def is_infobox(template: Template) -> bool:
 
 def remove_top_templates(code):
     """
-    删除页面最顶部连续模板。
+    Remove consecutive templates at the top of a page.
 
-    删除规则：
-    - 忽略空白、注释
-    - 连续删除模板
-    - 遇到第一个 Infobox 停止（Infobox 保留）
-    - 遇到正文停止
+    Removal rules:
+    - Ignore whitespace and comments
+    - Remove templates consecutively
+    - Stop at the first Infobox (Infobox is preserved)
+    - Stop when regular content is encountered
     """
 
     i = 0
@@ -240,17 +240,17 @@ def remove_top_templates(code):
 
 def effective_length(wikitext: str) -> float:
     """
-    计算 Wikitext 有效长度。
+    Calculate the effective length of wikitext.
 
-    规则：
-    1. <ref>...</ref> 不计。
-    2. ASCII 字母和数字计 0.5。
-    3. 模板仅统计参数值。
-    4. 删除页顶连续模板（直到 Infobox）。
-    5. File / Category 链接不计。
+    Rules:
+    1. <ref>...</ref> tags are not counted.
+    2. ASCII letters and digits count as 0.5.
+    3. Templates only count parameter values.
+    4. Remove consecutive top-of-page templates (until Infobox).
+    5. File / Category links are not counted.
     """
 
-    # 去掉 ref
+    # Strip ref tags
     wikitext = REF_RE.sub("", wikitext)
     wikitext = COMMENT_RE.sub("", wikitext)
     wikitext = MAGICWORD_RE.sub("", wikitext)
@@ -260,8 +260,8 @@ def effective_length(wikitext: str) -> float:
     # Parse
     code = mwparserfromhell.parse(wikitext)
 
-    # 删除页顶模板
+    # Remove top-of-page templates
     remove_top_templates(code)
 
-    # 统计长度
+    # Count length
     return code_length(code)

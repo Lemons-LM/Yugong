@@ -1,13 +1,13 @@
-import os
-
 from pywikibot import family
+
+from src.Yugong.core.settings import settings
 
 
 class QiuwenFamily(family.Family):
     """Qiuwen family."""
 
     name = "qiuwen"
-    langs = {"zh": os.environ.get("QIUWEN_DOMAIN", "www.qiuwenbaike.cn")}
+    langs = {"zh": getattr(settings, 'wiki_domain', 'www.qiuwenbaike.cn')}
 
     def scriptpath(self, code):
         return ""

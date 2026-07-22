@@ -1,6 +1,6 @@
 def sections_to_page(sections: list, *, original_content: str=""):
     """
-    将多个段落转为页面
+    Combine multiple sections into a page string.
     """
     result = original_content.strip()
 

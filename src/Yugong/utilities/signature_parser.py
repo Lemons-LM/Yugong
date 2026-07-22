@@ -1,28 +1,28 @@
 import re
 from datetime import datetime
 
-# ISO 8601 格式检测（用于从数据库读取时反序列化）
+# ISO 8601 format detection (for deserialization when reading from the database)
 _ISO_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
 )
 
-# 中文日期解析（用于 MarkAsResolved 模板中只有日期无时间的情况）
+# Chinese date parsing (for MarkAsResolved templates with date-only, no time)
 _CN_DATE_RE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
 
-# 匹配维基讨论页中的时间戳，形如：2026年3月30日 (一) 20:57 (CST)
+# Match wiki discussion page timestamps, e.g. 2026年3月30日 (一) 20:57 (CST)
 _TIMESTAMP_RE = re.compile(
     r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*[（(][^）)]*[）)]\s*(\d{1,2}):(\d{2})"
 )
 
-# 匹配签名中的用户名
+# Match username in signatures
 _SIGNATURE_USER_RE = re.compile(
     r"\[\[(?:(?:User|用户|U)[ _]talk|UT):([^|\]]+)(?:\|[^\]]+)?\]\]"
 )
 
 def parse_timestamp(raw: str) -> datetime | None:
     """
-    将形如 '2026年3月30日 (一) 20:57' 的字符串解析为 datetime。
-    解析失败返回 None。
+    Parse a string like '2026年3月30日 (一) 20:57' into a datetime.
+    Returns None on failure.
     """
     m = _TIMESTAMP_RE.search(raw)
     if not m:
@@ -38,7 +38,7 @@ def parse_timestamp(raw: str) -> datetime | None:
 
 def parse_cn_date(raw: str) -> datetime | None:
     """
-    将形如 '2026年4月2日' 的纯中文日期解析为 datetime（时间取 00:00）。
+    Parse a Chinese date string like '2026年4月2日' into a datetime (time defaults to 00:00).
     """
     m = _CN_DATE_RE.search(raw)
     if not m:
@@ -49,14 +49,14 @@ def parse_cn_date(raw: str) -> datetime | None:
         return None
 
 def datetime_to_iso(dt: datetime) -> str | None:
-    """将 datetime 转为 ISO 8601 字符串用于存储，None 原样返回。"""
+    """Convert datetime to ISO 8601 string for storage. Returns None as-is."""
     if dt is None:
         return
     return dt.isoformat()
 
 
 def iso_to_datetime(raw: str) -> datetime | None:
-    """将数据库中 ISO 8601 字符串转回 datetime，None 或空值返回 None。"""
+    """Convert an ISO 8601 string from the database back to datetime. Returns None for empty/null values."""
     if not raw:
         return None
     try:

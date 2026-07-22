@@ -10,6 +10,11 @@ class Settings:
     user_agent: str = "Yugong/1.0(Gecko-like, Repository/github.com:Lemons-LM/Yugong), Python/3.12"
     request_max_tries: int = 3
     edit_comment: str = "Edited by Yugong (gh:Lemons-LM/Yugong) program"
+    bot_name: str = "Yugong-bot"
+    wiki_domain: str = "www.qiuwenbaike.cn"
+    user_agent_format: str = "Yugong/1.0 {username}/{script} ({script_comments}) {pwb}{python} {http_backend}"
+    user_agent_check: str = "Yugong/1.0 (Check suppressed)"
+    mail_recipients: list[str] = []
 
     is_dangerous_tag_unacceptable: bool = True
     safe_tag_list: list[str] = [

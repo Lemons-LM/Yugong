@@ -81,6 +81,14 @@ Follow these steps to create custom extensions:
 - Must ensure usage complies with all applicable laws and regulations in your jurisdiction
 - Including but not limited to the laws of the People's Republic of China
 
+## Documentation
+
+- [Extension Development Guide](docs/extension-dev.md) — how to write `@job`/`@intro` extensions
+- [Template Rules Reference](docs/template-rules.md) — TOML-based template transformation rules
+- [Deployment Guide](docs/deployment.md) — configuring and running as an automated bot
+- [Dev Mode](docs/dev-mode.md) — testing extensions locally without a wiki connection
+- [Maintainer Guide](docs/maintainer.md) — architecture, patterns, and technical debt for codebase maintainers
+
 ## Contributing
 
 Contributions are welcome, as long as follow the [legal terms](LEGAL.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md).

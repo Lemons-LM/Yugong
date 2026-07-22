@@ -1,5 +1,5 @@
 """
-这个是用来存储模板信息，防止反复请求的。暂时用不到
+Template info cache database — prevents repeated API requests. Not yet wired up.
 """
 
 import json
@@ -13,49 +13,34 @@ from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 class BotDB:
     """
-    Wiki机器人数据库管理类
+    Wiki bot database management class.
 
-    使用SQLite单文件数据库，支持高性能读写（WAL模式）。
-    提供通用的增删改查方法，自动处理JSON序列化和中文字符。
+    Uses SQLite single-file database with WAL mode for high-performance reads/writes.
+    Provides generic CRUD methods with automatic JSON serialization.
 
-    数据库表结构：
-        1. template - Wiki模板信息
-           - name (TEXT, 主键): 模板名称
-           - aliases (TEXT, JSON数组): 所有别名/重定向列表
-           - type (TEXT): 模板类型（如navbox/infobox）
-           - purpose (TEXT, 可选): 用途描述
-           - usage (TEXT, 可选): 用法说明
-           - scope (TEXT, 可选): 使用范围
+    Database tables:
+        1. template - Wiki template info
+           - id (INTEGER, PK, autoincrement)
+           - title (TEXT, NOT NULL)
+           - target (TEXT, NOT NULL)
 
-        2. alias - 重定向映射
-           - id (INTEGER, 主键, 自增): 唯一标识
-           - namespace (TEXT): 命名空间（如Template/User）
-           - title (TEXT): 标题（不含命名空间）
-           - target_table (TEXT): 目标表名
-           - target_key (TEXT): 目标表的键值
-           - 唯一约束: (namespace, title)
+        2. alias - Redirect mapping
+           - id (INTEGER, PK, autoincrement)
+           - title (TEXT, NOT NULL)
+           - target (TEXT, NOT NULL)
 
-        3. talks - 讨论记录
-           - id (INTEGER, 主键, 自增): 唯一标识
-           - section_title (TEXT): 段落标题
-           - page (TEXT): 所在页面
-           - start_time (TEXT, 可选): 开始时间（ISO 8601 格式）
-           - end_time (TEXT, 可选): 结束时间（ISO 8601 格式）
-           - last_reply_time (TEXT, 可选): 最后回复时间（ISO 8601 格式）
-           - participants (TEXT, 可选): 参与者列表（JSON数组）
-           - is_closed (INTEGER): 是否结束（0=未结束, 1=已结束）
-
-        4. preferences - 用户偏好设置
-           - username (TEXT, 主键): 用户名
-           - settings (TEXT, JSON对象): 设置内容字典
+        3. category - Category mapping
+           - id (INTEGER, PK, autoincrement)
+           - title (TEXT, NOT NULL)
+           - target (TEXT, NOT NULL)
     """
 
     def __init__(self, db_path: Path | None = None):
         """
-        初始化数据库连接
+        Initialize database connection.
 
         Args:
-            db_path: 数据库文件路径，默认为 PROJECT_ROOT/data/db/db.sqlite3
+            db_path: Database file path, defaults to PROJECT_ROOT/data/db/db.sqlite3
         """
         if db_path is None:
             db_path = PROJECT_ROOT / "data" / "db" / "db.sqlite3"
@@ -68,10 +53,10 @@ class BotDB:
 
     def _get_connection(self) -> sqlite3.Connection:
         """
-        获取数据库连接（启用WAL模式和外键约束）
+        Get database connection (WAL mode and foreign keys enabled).
 
         Returns:
-            sqlite3.Connection: 数据库连接对象
+            sqlite3.Connection: Database connection object
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -80,7 +65,7 @@ class BotDB:
         return conn
 
     def _init_database(self):
-        """创建所有数据表（如果不存在）"""
+        """Create all tables if they don't exist."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
@@ -109,19 +94,18 @@ class BotDB:
             """)
 
             conn.commit()
-            # self._migrate_talks_table(conn)
-            self.logger.info("数据库初始化完成")
+            self.logger.info("Database initialized")
 
     def insert(self, table: str, data: dict[str, any]) -> bool:
         """
-        插入数据到指定表
+        Insert data into the specified table.
 
         Args:
-            table: 表名
-            data: 要插入的数据字典
+            table: Table name
+            data: Data dictionary to insert
 
         Returns:
-            bool: 插入是否成功
+            bool: Whether the insert succeeded
         """
         try:
             with self._get_connection() as conn:
@@ -132,23 +116,23 @@ class BotDB:
                 query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
                 conn.execute(query, values)
                 conn.commit()
-                self.logger.debug(f"插入数据到 {table}: {data}")
+                self.logger.debug(f"Inserted into {table}: {data}")
                 return True
         except Exception as e:
-            self.logger.error(f"插入数据失败: {e}")
+            self.logger.error(f"Insert failed: {e}")
             return False
 
     def update(self, table: str, data: dict[str, any], conditions: dict[str, any]) -> bool:
         """
-        更新指定表的数据
+        Update data in the specified table.
 
         Args:
-            table: 表名
-            data: 要更新的字段和值
-            conditions: 更新条件（多个条件用AND连接）
+            table: Table name
+            data: Fields and values to update
+            conditions: Update conditions (AND-connected)
 
         Returns:
-            bool: 更新是否成功
+            bool: Whether the update succeeded
         """
         try:
             with self._get_connection() as conn:
@@ -163,25 +147,25 @@ class BotDB:
                 conn.commit()
 
                 if cursor.rowcount > 0:
-                    self.logger.debug(f"更新 {table} 数据: {data}, 条件: {conditions}")
+                    self.logger.debug(f"Updated {table}: {data}, conditions: {conditions}")
                     return True
                 else:
-                    self.logger.warning(f"未找到匹配的记录进行更新")
+                    self.logger.warning("No matching record found for update")
                     return False
         except Exception as e:
-            self.logger.error(f"更新数据失败: {e}")
+            self.logger.error(f"Update failed: {e}")
             return False
 
     def delete(self, table: str, conditions: dict[str, any]) -> bool:
         """
-        从指定表删除数据
+        Delete data from the specified table.
 
         Args:
-            table: 表名
-            conditions: 删除条件（多个条件用AND连接）
+            table: Table name
+            conditions: Delete conditions (AND-connected)
 
         Returns:
-            bool: 删除是否成功
+            bool: Whether the delete succeeded
         """
         try:
             with self._get_connection() as conn:
@@ -193,28 +177,28 @@ class BotDB:
                 conn.commit()
 
                 if cursor.rowcount > 0:
-                    self.logger.debug(f"从 {table} 删除数据, 条件: {conditions}")
+                    self.logger.debug(f"Deleted from {table}, conditions: {conditions}")
                     return True
                 else:
-                    self.logger.warning(f"未找到匹配的记录进行删除")
+                    self.logger.warning("No matching record found for delete")
                     return False
         except Exception as e:
-            self.logger.error(f"删除数据失败: {e}")
+            self.logger.error(f"Delete failed: {e}")
             return False
 
     def search(self, table: str, conditions: dict[str, any] | None = None,
                columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, any]]:
         """
-        搜索指定表的数据（精确匹配）
+        Search the specified table (exact match).
 
         Args:
-            table: 表名
-            conditions: 搜索条件字典（多条件AND连接），None表示无条件
-            columns: 要查询的列名列表，None表示查询所有列
-            limit: 限制返回结果数量
+            table: Table name
+            conditions: Search conditions (AND-connected), None for all rows
+            columns: Column names to return, None for all columns
+            limit: Limit result count
 
         Returns:
-            List[Dict[str, Any]]: 搜索结果列表
+            List[Dict[str, Any]]: Search results
         """
         try:
             with self._get_connection() as conn:
@@ -236,25 +220,25 @@ class BotDB:
                 results = [dict(row) for row in rows]
                 results = [self._deserialize_row(row) for row in results]
 
-                self.logger.debug(f"搜索 {table}, 条件: {conditions}, 结果数: {len(results)}")
+                self.logger.debug(f"Searched {table}, conditions: {conditions}, results: {len(results)}")
                 return results
         except Exception as e:
-            self.logger.error(f"搜索数据失败: {e}")
+            self.logger.error(f"Search failed: {e}")
             return []
 
     def search_like(self, table: str, conditions: dict[str, str] | None = None,
                     columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, any]]:
         """
-        模糊搜索指定表的数据（LIKE匹配）
+        Fuzzy search the specified table (LIKE match).
 
         Args:
-            table: 表名
-            conditions: 模糊搜索条件字典（多条件AND连接），值会自动添加%通配符
-            columns: 要查询的列名列表，None表示查询所有列
-            limit: 限制返回结果数量
+            table: Table name
+            conditions: Fuzzy conditions (AND-connected), values auto-wrapped with % wildcards
+            columns: Column names to return, None for all columns
+            limit: Limit result count
 
         Returns:
-            List[Dict[str, Any]]: 搜索结果列表
+            List[Dict[str, Any]]: Search results
         """
         try:
             with self._get_connection() as conn:
@@ -276,10 +260,10 @@ class BotDB:
                 results = [dict(row) for row in rows]
                 results = [self._deserialize_row(row) for row in results]
 
-                self.logger.debug(f"模糊搜索 {table}, 条件: {conditions}, 结果数: {len(results)}")
+                self.logger.debug(f"Fuzzy search {table}, conditions: {conditions}, results: {len(results)}")
                 return results
         except Exception as e:
-            self.logger.error(f"模糊搜索数据失败: {e}")
+            self.logger.error(f"Fuzzy search failed: {e}")
             return []
 
     def search_query(self, table: str, where_clause: str = "",
@@ -287,19 +271,19 @@ class BotDB:
                      columns: list[str] | None = None,
                      limit: int | None = None) -> list[dict[str, any]]:
         """
-        通用查询：支持自定义 WHERE 子句（可包含 <、>、LIKE 等任意运算符）。
+        Generic query with custom WHERE clause (supports <, >, LIKE, etc.).
 
         Args:
-            table: 表名
-            where_clause: WHERE 后的条件子句（不含 "WHERE" 关键字），
-                          如 ``"start_time > ? AND page = ?"``。
-                          为空则查询全部记录。
-            values: 与占位符 ``?`` 一一对应的参数列表
-            columns: 要查询的列名列表，None 表示查询所有列
-            limit: 限制返回结果数量
+            table: Table name
+            where_clause: WHERE conditions (without "WHERE" keyword),
+                          e.g. ``"start_time > ? AND page = ?"``.
+                          Empty for all records.
+            values: Parameter list matching ``?`` placeholders
+            columns: Column names to return, None for all columns
+            limit: Limit result count
 
         Returns:
-            List[Dict[str, Any]]: 查询结果列表
+            List[Dict[str, Any]]: Query results
         """
         try:
             with self._get_connection() as conn:
@@ -318,23 +302,23 @@ class BotDB:
                 results = [self._deserialize_row(row) for row in results]
 
                 self.logger.debug(
-                    f"通用查询 {table}, WHERE {where_clause!r}, "
-                    f"结果数: {len(results)}"
+                    f"Query {table}, WHERE {where_clause!r}, "
+                    f"results: {len(results)}"
                 )
                 return results
         except Exception as e:
-            self.logger.error(f"通用查询失败: {e}")
+            self.logger.error(f"Query failed: {e}")
             return []
 
     def execute_transaction(self, operations: list[tuple[str, list[any]]]) -> bool:
         """
-        执行事务（多条SQL操作）
+        Execute a transaction (multiple SQL operations).
 
         Args:
-            operations: 操作列表，每个元素为 (sql_query, params) 元组
+            operations: List of (sql_query, params) tuples
 
         Returns:
-            bool: 事务是否成功执行
+            bool: Whether the transaction succeeded
         """
         try:
             with self._get_connection() as conn:
@@ -342,22 +326,22 @@ class BotDB:
                     serialized_params = [self._serialize_value(p) for p in params]
                     conn.execute(query, serialized_params)
                 conn.commit()
-                self.logger.debug(f"执行事务成功, 操作数: {len(operations)}")
+                self.logger.debug(f"Transaction succeeded, operations: {len(operations)}")
                 return True
         except Exception as e:
-            self.logger.error(f"执行事务失败: {e}")
+            self.logger.error(f"Transaction failed: {e}")
             return False
 
     @staticmethod
     def _serialize_value(value: any) -> any:
         """
-        序列化值为适合存储的格式（list/dict转为JSON字符串，datetime转为ISO 8601）
+        Serialize value to storage format (list/dict → JSON string, datetime → ISO 8601).
 
         Args:
-            value: 要序列化的值
+            value: Value to serialize
 
         Returns:
-            序列化后的值
+            Serialized value
         """
         if isinstance(value, datetime):
             return value.isoformat()
@@ -368,13 +352,13 @@ class BotDB:
     @staticmethod
     def _deserialize_row(row: dict[str, any]) -> dict[str, any]:
         """
-        反序列化行数据（JSON字符串转回list/dict）
+        Deserialize row data (JSON string back to list/dict).
 
         Args:
-            row: 数据库行数据字典
+            row: Database row data dict
 
         Returns:
-            反序列化后的行数据
+            Deserialized row data
         """
         deserialized = {}
         for key, value in row.items():
@@ -389,14 +373,14 @@ class BotDB:
 
     def execute_raw(self, sql: str, params: list[any] | None = None) -> list[dict[str, any]]:
         """
-        执行原始SQL查询并返回结果
+        Execute raw SQL query and return results.
 
         Args:
-            sql: SQL查询语句
-            params: 参数列表
+            sql: SQL query statement
+            params: Parameter list
 
         Returns:
-            List[Dict[str, Any]]: 查询结果
+            List[Dict[str, Any]]: Query results
         """
         try:
             with self._get_connection() as conn:
@@ -406,7 +390,8 @@ class BotDB:
                 results = [self._deserialize_row(row) for row in results]
                 return results
         except Exception as e:
-            self.logger.error(f"执行原始SQL失败: {e}")
+            self.logger.error(f"Raw SQL failed: {e}")
             return []
+
 
 bot_db = BotDB()

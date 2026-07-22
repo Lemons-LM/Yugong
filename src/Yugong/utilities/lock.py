@@ -3,12 +3,11 @@ from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 def lock() -> bool:
     """
-    尝试获取锁（创建锁文件）。
-    如果锁文件不存在，则创建并返回 True；
-    如果已存在，则返回 False（表示有其他进程持有锁）。
+    Try to acquire a lock (create a lock file).
+    Returns True if lock was acquired, False if already held by another process.
     """
     lock_path = PROJECT_ROOT / "data" / "lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)  # 确保 data 目录存在
+    lock_path.parent.mkdir(parents=True, exist_ok=True)  # ensure data dir exists
 
     try:
         with lock_path.open('xb'):
@@ -18,7 +17,7 @@ def lock() -> bool:
         return False
 
 def unlock() -> None:
-    """释放锁（删除锁文件）。若文件不存在则静默忽略。"""
+    """Release the lock (delete lock file). Silently ignores if file doesn't exist."""
     lock_path = PROJECT_ROOT / "data" / "lock"
     try:
         lock_path.unlink()

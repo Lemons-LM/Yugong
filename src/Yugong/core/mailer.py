@@ -5,11 +5,12 @@ from email.header import Header
 from email.mime.text import MIMEText
 
 from src.Yugong.core.logger import BotLogger
+from src.Yugong.core.settings import settings
 
 
 class Mailer:
     """
-    邮件发送模块
+    Email sending module.
     """
 
     def __init__(self):
@@ -19,28 +20,28 @@ class Mailer:
         self.status = True
 
         if not self.mail_account or not self.mail_password:
-            self.logger.info("警告：未配置 MAIL_ACCOUNT 或 MAIL_PASSWORD 环境变量，跳过邮件发送")
+            self.logger.info("Warning: MAIL_ACCOUNT or MAIL_PASSWORD not configured, skipping email")
             self.status = False
             return
 
     def email(self, subject: str, content: str) -> None:
         """
-        通过 SMTP 发送邮件
+        Send email via SMTP.
 
         Args:
-            subject: 邮件主题
-            content: 邮件内容
+            subject: Email subject
+            content: Email body
         """
 
         if not self.status:
-            self.logger.info("未配置 MAIL_ACCOUNT 或 MAIL_PASSWORD 环境变量，跳过邮件发送")
+            self.logger.info("MAIL_ACCOUNT or MAIL_PASSWORD not configured, skipping email")
             return
-        self.logger.info("正在发送邮件...")
+        self.logger.info("Sending email...")
         smtp_server = "smtp.office365.com"
         smtp_port = 587
 
-        # 收件人列表，可以从环境变量获取或硬编码
-        recipients = ["contact@frontiers.ac"]
+        # Recipients from settings, with env-var override
+        recipients = getattr(settings, 'mail_recipients', []) or []
 
         msg = MIMEText(content, 'plain', 'utf-8')
         msg['From'] = self.mail_account
@@ -55,10 +56,10 @@ class Mailer:
             server.login(self.mail_account, self.mail_password)
             server.sendmail(self.mail_account, recipients, msg.as_string())
             server.quit()
-            self.logger.info(f"邮件已发送至: {recipients}")
+            self.logger.info(f"Email sent to: {recipients}")
         except Exception as e:
-            self.logger.info(f"发送邮件失败: {e}")
-            self.logger.error(f"发送邮件失败: {e}")
+            self.logger.info(f"Failed to send email: {e}")
+            self.logger.error(f"Failed to send email: {e}")
             traceback.print_exc()
 
 mailer = Mailer()

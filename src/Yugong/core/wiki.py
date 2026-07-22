@@ -13,13 +13,18 @@ from pywikibot.comms import http
 
 from src.Yugong.core.logger import BotLogger
 from src.Yugong.core.mailer import mailer
+from src.Yugong.core.settings import settings
 from src.Yugong.utilities.link import get_user_talk
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 OAUTH_TOKEN = os.environ.get("MW_BOT_OAUTH_TOKEN")
 
 class Wiki:
-    def __init__(self, bot_name: str, api_endpoint: str = "https://www.qiuwenbaike.cn/api.php"):
+    def __init__(self, bot_name: str = None, api_endpoint: str = None):
+        if bot_name is None:
+            bot_name = getattr(settings, 'bot_name', 'Yugong-bot')
+        if api_endpoint is None:
+            api_endpoint = f"https://{getattr(settings, 'wiki_domain', 'www.qiuwenbaike.cn')}/api.php"
         if not bot_name.strip() or not api_endpoint.strip():
             raise ValueError("Bot name and api endpoint cannot be empty")
         self.bot_name = bot_name
@@ -27,7 +32,7 @@ class Wiki:
         self.api_endpoint = api_endpoint
         self.logger = BotLogger("wiki")
         self.csrf_token = ""
-        self.logger.info("已初始化 WikiBot")
+        self.logger.info("WikiBot initialized")
         Path(os.path.join(PROJECT_ROOT, "data","bot")).mkdir(parents=True, exist_ok=True)
         self.heartbeat_file = os.path.join(PROJECT_ROOT, "data","bot", "heartbeat")
         self.heartbeat = ""
@@ -37,15 +42,14 @@ class Wiki:
 
     def get_sections(self, title: str, *, level: str="2") -> list[str]:
         """
-        获取页面的所有二级标题 (== ... ==)
+        Get all sections of the specified level from a page.
 
         Args:
-            title: 页面标题
+            title: Page title
+            level: Section level (default "2" for == ... ==)
 
         Returns:
-            list: 二级标题名称列表
-            :param title:
-            :param level:
+            list: Section anchor names at the specified level
         """
         self.tick()
         level = str(level)
@@ -56,7 +60,7 @@ class Wiki:
             "format": "json"
         }
 
-        response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": "Qiuwen/1.1 Lemonade-bot/Yugong (Check suppressed)", "Authorization": f"Bearer {OAUTH_TOKEN}"})
+        response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": settings.user_agent_check, "Authorization": f"Bearer {OAUTH_TOKEN}"})
         if not response:
             return []
 
@@ -67,7 +71,7 @@ class Wiki:
 
         sections = data.get("parse", {}).get("sections", [])
 
-        # 筛选二级标题 (level == "2")
+        # Filter sections by level
         level_sections = []
         if not sections:
             return []
@@ -96,17 +100,17 @@ class Wiki:
                 bot=True
             )
         except Exception as e:
-            self.logger.error(f"发布失败：{e}")
+            self.logger.error(f"Publish failed: {e}")
 
     def mass_message(self, mass_message_list: str, title: str, content: str, summary: str) -> None:
         message_list = self.get_message_list(page=mass_message_list)
-        self.logger.info(f"正在发布MassMessage到：{mass_message_list}\n标题：{title}\n内容：{content}\n摘要：{summary}")
+        self.logger.info(f"Sending MassMessage to: {mass_message_list}\nTitle: {title}\nContent: {content}\nSummary: {summary}")
         for target in message_list:
             try:
                 if not self.check_allow_bots(target):
-                    self.logger.info(f"该用户不允许机器人发送通知")
+                    self.logger.info("User does not allow bot notifications")
                     continue
-                self.logger.info(f"\n正在发布到：{target}")
+                self.logger.info(f"\nPublishing to: {target}")
                 self.new_section(title=target, section_title=title, content=content, summary=summary)
             except Exception as e:
                 self.logger.exception(e)
@@ -114,7 +118,7 @@ class Wiki:
 
     def check_allow_bots(self, user: str) -> bool:
         """
-        检查用户是否允许机器人操作
+        Check if user allows bot operations.
         """
         text: str = get_user_talk(user)
         if not text:
@@ -125,7 +129,7 @@ class Wiki:
 
     def _check_suppressed_action(self) -> None:
         """
-        检查用户是否禁止机器人操作
+        Check if the bot has been blocked/suppressed.
         """
         self._tick_disabled = True
         try:
@@ -136,7 +140,7 @@ class Wiki:
                 "rvprop": "ids",
                 "format": "json"
             }
-            response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": "Qiuwen/1.1 Lemonade-bot/Yugong (Check suppressed)", "Authorization": f"Bearer {OAUTH_TOKEN}"})
+            response = http.session.get(self.api_endpoint, params=params, headers={"User-Agent": settings.user_agent_check, "Authorization": f"Bearer {OAUTH_TOKEN}"})
             if not response:
                 return
             data = response.json()["query"]["pages"]
@@ -154,9 +158,9 @@ class Wiki:
                 if heartbeat_in_file and not self.heartbeat:
                     self.heartbeat = str(heartbeat_in_file)
                 if str(self.heartbeat) != str(revid):
-                    self.logger.critical("机器人被禁止操作")
+                    self.logger.critical("Bot has been suppressed")
                     try:
-                        mailer.email("机器人被禁止操作", "机器人被禁止操作，请及时处理！")
+                        mailer.email("Bot has been suppressed", "Bot has been suppressed — check immediately!")
                     except Exception:
                         pass
                     sys.exit(1)
@@ -165,12 +169,12 @@ class Wiki:
 
     @property
     def site(self) -> pywikibot.Site:
-        """获取 Pywikibot Site（懒初始化）"""
+        """Get Pywikibot Site (lazy init)."""
         if self._site is None:
             oauth_token = os.environ.get("MW_BOT_OAUTH_TOKEN")
             if not oauth_token:
-                raise ValueError("未找到 MW_BOT_OAUTH_TOKEN 环境变量")
-            config.user_agent_format = 'Qiuwen/1.1 {username}/{script} ({script_comments}) {pwb}' '{python} {http_backend}'
+                raise ValueError("MW_BOT_OAUTH_TOKEN environment variable not found")
+            config.user_agent_format = settings.user_agent_format
             config.cosmetic_changes = True
             config.datafilepath(os.path.join(PROJECT_ROOT, "data", "pwb"))
             config.minthrottle = 2
@@ -182,7 +186,7 @@ class Wiki:
                 user=self.bot_name,
             )
 
-            self.logger.info("已初始化 Pywikibot Site")
+            self.logger.info("Pywikibot Site initialized")
 
         self.tick()
         return self._site
@@ -200,19 +204,19 @@ class Wiki:
         return pywikibot.FilePage(self.site, title)
 
     def tick(self):
-        if self._tick_disabled:          # 若被禁用则直接返回
+        if self._tick_disabled:          # skip if disabled
             return
         self.request_count += 1
         if self.request_count >= 20:
             self._check_suppressed_action()
             self.request_count = 0
 
-wiki = Wiki(bot_name="Lemonade-bot")
+wiki = Wiki()
 
 _original_request = http.session.request
 
 def guarded_request(method, url, *args, **kwargs):
-    # 这里拿不到 self，所以需要全局 wiki 实例
+    # Can't access self here, so use the global wiki instance
     wiki.tick()
     wiki.logger.debug(f"Wiki request: {method} {url} {kwargs}")
     headers = kwargs.get('headers', {})
