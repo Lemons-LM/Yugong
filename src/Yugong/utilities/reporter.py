@@ -11,8 +11,8 @@ class Reporter:
 
     def report(self):
         if self.issues:
-            subject = "Wikibot Report"
-            body = "Wikibot Report\n\n"
+            subject = "Yugong Report"
+            body = "Yugong Report\n\n"
             for module, issues in self.issues.items():
                 body += f"{module}:\n"
                 for issue in issues:

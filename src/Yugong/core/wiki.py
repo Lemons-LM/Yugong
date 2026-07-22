@@ -155,7 +155,10 @@ class Wiki:
                     self.heartbeat = str(heartbeat_in_file)
                 if str(self.heartbeat) != str(revid):
                     self.logger.critical("机器人被禁止操作")
-                    mailer.email("机器人被禁止操作", "机器人被禁止操作，请及时处理！")
+                    try:
+                        mailer.email("机器人被禁止操作", "机器人被禁止操作，请及时处理！")
+                    except Exception:
+                        pass
                     sys.exit(1)
         finally:
             self._tick_disabled = False
@@ -211,7 +214,7 @@ _original_request = http.session.request
 def guarded_request(method, url, *args, **kwargs):
     # 这里拿不到 self，所以需要全局 wiki 实例
     wiki.tick()
-    print(f"Wiki request: {method} {url} {kwargs}")
+    wiki.logger.debug(f"Wiki request: {method} {url} {kwargs}")
     headers = kwargs.get('headers', {})
     if OAUTH_TOKEN and 'Authorization' not in headers:
         headers['Authorization'] = f'Bearer {OAUTH_TOKEN}'

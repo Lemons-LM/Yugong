@@ -23,5 +23,5 @@ def check_heartbeat(*, file: str, content: str):
         else:
             logger.info(f"今日已运行过！")
             logger.error("今日已运行过！")
-            mailer.email(subject="Wikibot-QW出现了重复运行的问题！", content="Wikibot-QW出现了重复运行的问题，请检查！")
+            mailer.email(subject="Yugong出现了重复运行的问题！", content="Yugong出现了重复运行的问题，请检查！")
             exit(0)

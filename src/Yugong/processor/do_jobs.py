@@ -124,24 +124,15 @@ def _process_single_page(page_name: str) -> None:
 
     if content != str(wikitext.wikitext):
         if settings.submit_changes:
+            # ── Auto/robot mode: save directly, no human interaction ──
             try:
                 pwb_page.text = wikitext.processed_content
                 pwb_page.save(summary=settings.edit_comment, bot=True)
                 print(f"Successfully submitted changes to {page_name}")
             except Exception as e:
-                print(f"Failed to submit changes: {e}")
-                pyperclip.copy(str(wikitext.wikitext))
-                edit_url = (
-                    f"{wiki.api_endpoint}index.php"
-                    f"?title={page_name}&action=edit"
-                )
-                webbrowser.open(edit_url)
-                input(
-                    "The new wikitext has been copied to your clipboard.\n"
-                    "Submit failed, please manually paste and submit it.\n"
-                    "Press any key to continue..."
-                )
+                logger.error(f"Failed to submit {page_name}: {e}")
         else:
+            # ── Manual mode: clipboard + browser + user pastes ──────
             pyperclip.copy(str(wikitext.wikitext))
             edit_url = (
                 f"{wiki.api_endpoint}index.php"

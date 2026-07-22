@@ -8,35 +8,7 @@ from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
 def confirm_settings(all_confirmed: bool = False) -> None:
-    if all_confirmed or settings.bypass_confirm_settings:
-        return
-    if_know_to_use = input("YuGong is a tool to help you to do some jobs on specific wiki.\n"
-                           "It it released \"as-is\", so we won't guarantee it works as expected.\n"
-                           "You need to take full responsibility to using the program.\n"
-                           "You are solely responsible for ensuring that your use of this software complies with all applicable laws and regulations in your jurisdiction.\n"
-                           "Including but not limited to the laws of the People's Republic of China.\n"
-                           "Besides that, it is a free software, which means you never need to pay for it.\n"
-                           "Do you know that? (y/[n]): ").lower()
-    if if_know_to_use not in ["y", "yes"]:
-        print("Goodbye")
-        exit(0)
-
-    setting_list_str = []
-    for attr_name in dir(settings):
-        if not attr_name.startswith('_') and not callable(getattr(settings, attr_name)):
-            attr_value = getattr(settings, attr_name)
-            setting_list_str.append(f"{attr_name} is set to {attr_value}")
-
-    setting_str = "\n".join(setting_list_str)
-
-    if_confirmed_job = input(
-        f"The following settings are confirmed:\n{setting_str}\nDo you want to continue? (y/[n]): ").lower()
-    if if_confirmed_job not in ["y", "yes"]:
-        print("Please check again the settings.toml")
-        exit(0)
-
-
-    logger.info(f"Settings confirmed:\n{setting_str}")
+    # ── Always load extensions and template rules ─────────────────
 
     steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "extensions"
     for f in steps_path.glob("*.py"):
@@ -49,15 +21,59 @@ def confirm_settings(all_confirmed: bool = False) -> None:
         intro_str: str = f()
         intro_strs += f"{intro_str}\n"
 
-    if_confirmed_extensions = input(f"{intro_strs}\nDo you want to continue? (y/[n]): ").lower()
+    print("The following Template TOML rules are loaded:\n")
+    formatter.get_ruleset()
+
+    # ── Build settings summary ────────────────────────────────────
+
+    setting_list_str = []
+    for attr_name in dir(settings):
+        if not attr_name.startswith('_') and not callable(getattr(settings, attr_name)):
+            attr_value = getattr(settings, attr_name)
+            setting_list_str.append(f"{attr_name} is set to {attr_value}")
+    setting_str = "\n".join(setting_list_str)
+
+    # ── Always log for audit trail ─────────────────────────────────
+
+    logger.info(f"Settings:\n{setting_str}")
+    logger.info(f"Extensions loaded:\n{intro_strs}")
+
+    # ── Skip interactive prompts in robot mode ─────────────────────
+
+    if all_confirmed or getattr(settings, 'bypass_confirm_settings', False):
+        return
+
+    # ── Interactive confirmation prompts (manual mode only) ────────
+
+    if_know_to_use = input(
+        "YuGong is a tool to help you to do some jobs on specific wiki.\n"
+        "It it released \"as-is\", so we won't guarantee it works as expected.\n"
+        "You need to take full responsibility to using the program.\n"
+        "You are solely responsible for ensuring that your use of this software "
+        "complies with all applicable laws and regulations in your jurisdiction.\n"
+        "Including but not limited to the laws of the People's Republic of China.\n"
+        "Besides that, it is a free software, which means you never need to pay for it.\n"
+        "Do you know that? (y/[n]): "
+    ).lower()
+    if if_know_to_use not in ["y", "yes"]:
+        print("Goodbye")
+        exit(0)
+
+    if_confirmed_job = input(
+        f"The following settings are confirmed:\n{setting_str}\n"
+        f"Do you want to continue? (y/[n]): "
+    ).lower()
+    if if_confirmed_job not in ["y", "yes"]:
+        print("Please check again the settings.toml")
+        exit(0)
+
+    if_confirmed_extensions = input(
+        f"{intro_strs}\nDo you want to continue? (y/[n]): "
+    ).lower()
     if if_confirmed_extensions not in ["y", "yes"]:
         print("Please check again the settings.toml")
         exit(0)
 
-    print("The following Template TOML rules are loaded:\n")
-    formatter.get_ruleset()
     if input("Do you want to continue? (y/[n]): ").lower() not in ["y", "yes"]:
         print("Please check again the rulesets")
         exit(0)
-
-    logger.info(f"Extensions loaded:\n{intro_strs}")
