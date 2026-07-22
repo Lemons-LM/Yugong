@@ -2,7 +2,7 @@ import importlib
 
 from src.Yugong.models.logger import logger
 from src.Yugong.models.settings import settings
-from src.Yugong.processor.template_formatter import get_ruleset
+from src.Yugong.models.template_formatter import formatter
 from src.Yugong.utils.mark_job_intro import INTROS
 from src.Yugong.utils.path_helper import PROJECT_ROOT
 
@@ -55,7 +55,7 @@ def confirm_settings(all_confirmed: bool = False) -> None:
         exit(0)
 
     print("The following Template TOML rules are loaded:\n")
-    get_ruleset()
+    formatter.get_ruleset()
     if input("Do you want to continue? (y/[n]): ").lower() not in ["y", "yes"]:
         print("Please check again the rulesets")
         exit(0)

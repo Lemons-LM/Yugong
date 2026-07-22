@@ -7,7 +7,6 @@ names = ["<NAME>", "<NAME>"] # List of names, the first one is the preferred one
 rename = true # Whether change the name to the preffered one
 delete = true # Whether delete the element
 replace = "{{{foo|{{{1}}}}}}" # Replace as str. Use {{{foo}}} as parameter name, | as separator to "if none"
-recursive = false # Whether recursive
 
 [[params]] # Named Parameter
 names = ["<NAME>", "<NAME>"] # List of names, you may use regex, the first one is the preferred one. Use 1 as annoymous para 1

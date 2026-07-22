@@ -1,262 +1,223 @@
 import json
 import os
-import time
+import re
+import sys
 
-import requests
 
-from src.Yugong.models.settings import settings
-from src.Yugong.models.wikitext import Wikitext
+from pathlib import Path
 
-#TODO: Use pywikibot if available
+import pywikibot
 
-class WikiInstance:
-    api_endpoint: str = None
-    user_agent: str = None
-    is_owner_only: bool = False
-    client_id: str = None
-    # Above are changeable, below are unchangeable outside
-    action_endpoint: str = None
-    rest_endpoint: str = None
-    access_token: str = None
-    refresh_token: str = None
-    permissions: list[str] = None
-    is_available: bool = False
+from pywikibot import config
+from pywikibot.comms import http
 
-    def __init__(self):
-        pass
+from src.wikibot.core.logger import BotLogger
+from src.wikibot.core.mailer import mailer
+from src.wikibot.utilities.link import get_user_talk
+from src.wikibot.utilities.path_helper import PROJECT_ROOT
 
-    def _get_request(self, *, url: str, params: dict=None) -> requests.Response:
-        headers: dict[str, str] = {
-            'User-Agent': settings.user_agent,
-        }
-        if self.access_token:
-            headers['Authorization'] = f'Bearer {self.access_token}'
-        max_retries: int = int(settings.request_max_tries) or 3
-        for attempt in range(max_retries):
-            response = requests.get(
-                url,
-                params=params,
+class Wiki:
+    def __init__(self, bot_name: str, api_endpoint: str = "https://www.qiuwenbaike.cn/api.php"):
+        if not bot_name.strip() or not api_endpoint.strip():
+            raise ValueError("Bot name and api endpoint cannot be empty")
+        self.bot_name = bot_name
+        self._site = None
+        self.api_endpoint = api_endpoint
+        self.logger = BotLogger("wiki")
+        self.csrf_token = ""
+        self.logger.info("已初始化 WikiBot")
+        Path(os.path.join(PROJECT_ROOT, "data","bot")).mkdir(parents=True, exist_ok=True)
+        self.heartbeat_file = os.path.join(PROJECT_ROOT, "data","bot", "heartbeat")
+        self.heartbeat = ""
+        self.request_count = 20
+        self._tick_disabled = False
+        self.tick()
 
-            )
-            if response.status_code == 200:
-                return response
-            else:
-                print(f"Attempt {attempt + 1} failed with status code: {response.status_code}")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-                else:
-                    raise Exception(
-                        f"API request failed with status code: {response.status_code} after {max_retries} attempts")
-
-    def _put_request(self, *, url: str, data: dict) -> requests.Response:
-        headers: dict[str, str] = {
-            'User-Agent': settings.user_agent,
-            'Content-Type': 'application/json',
-        }
-        if self.access_token:
-            headers['Authorization'] = f'Bearer {self.access_token}'
-        else:
-            raise Exception("No access token provided")
-
-        max_retries: int = int(settings.request_max_tries) or 3
-        for attempt in range(max_retries):
-            response = requests.put(url, headers=headers, data=json.dumps(data))
-            if response.status_code in [200, 201]:
-                return response.json()
-            elif response.status_code in [400, 409, 415]:
-                raise Exception(f"Attempt {attempt + 1} failed with status code: {response.status_code}")
-
-            else:
-                print(f"Attempt {attempt + 1} failed with status code: {response.status_code}")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-                else:
-                    raise Exception(
-                        f"API request failed with status code: {response.status_code} after {max_retries} attempts")
-
-    def update_settings(self) -> None:
+    def get_sections(self, title: str, *, level: str="2") -> list[str]:
         """
-        update settings which could be updated outside the object. Generate action/rest endpoint
+        获取页面的所有二级标题 (== ... ==)
+
+        Args:
+            title: 页面标题
+
+        Returns:
+            list: 二级标题名称列表
+            :param title:
+            :param level:
         """
-        if settings.api_endpoint:
-            self.api_endpoint = settings.api_endpoint
-            self.action_endpoint = self.api_endpoint + 'api.php'
-            self.rest_endpoint = self.api_endpoint + 'rest.php'
-
-        if settings.user_agent:
-            self.user_agent = settings.user_agent
-
-        if settings.client_id:
-            self.client_id = settings.client_id
-        self.init_instance()
-
-    def init_instance(self) -> None:
-        """
-        Authorize via OAuth2, or get [access_token] from the system environment
-        If [access_token] expires, get a new one.
-        Get bot permissions at the same time
-        """
-        self.action_endpoint = self.api_endpoint + 'api.php'
-        self.rest_endpoint = self.api_endpoint + 'rest.php'
-        if self.is_owner_only:
-            self.access_token = os.getenv('MW_OAUTH_TOKEN') or None
-        if self.access_token:
-            try:
-                headers: dict[str, str] = {'User-Agent': self.user_agent}
-                if self.access_token:
-                    headers['Authorization'] = f'Bearer {self.access_token}'
-                group_info_get = requests.get(
-                    self.action_endpoint,
-                    params={
-                    'action': 'query',
-                    'meta': 'userinfo',
-                    'uiprop': 'groups',
-                    'format': 'json',
-                    },
-                    headers=headers,
-                )
-                if group_info_get.status_code == 200:
-                    response_data = group_info_get.json()
-                    self.permissions = response_data.get('query', {}).get('userinfo', {}).get('groups', [])
-                    self.is_available = True
-            except Exception as e:
-                print(f"Error fetching group info: {e}")
-        else:
-            #TODO: Get OAuth token from endpoint, but this isn't a MVP phase job.
-            raise ValueError("(TODO) We cannot get OAuth token from endpoint now, so please provide OAuth token now") 
-
-    def get_todo_list(self) -> list[str]:
-        """
-        Get To-Do list via LocalSettings (settings.linked_template and settings.category), and Action API Endpoint.
-        Return as a list of page names
-        """
-        if not self.is_available:
-            raise ValueError("Wiki instance is not available")
-
-        todo_pages = set()
-        if hasattr(settings, 'linked_template'):
-            template_params = {
-                'action': 'query',
-                'format': 'json',
-                'list': 'embeddedin',
-                'eititle': f"Template:{settings.linked_template}",
-                'eilimit': 50
-            }
-
-            response = self._get_request(url=self.action_endpoint, params=template_params)
-            data = response.json()
-            embedded_pages = data.get('query', {}).get('embeddedin', [])
-            todo_pages.update([page['title'] for page in embedded_pages])
-
-        if hasattr(settings, 'category'):
-            category_params = {
-                'action': 'query',
-                'format': 'json',
-                'list': 'categorymembers',
-                'cmtitle': f"Category:{settings.category}",
-                'cmlimit': 50,
-                'cmtype': 'page'
-            }
-
-            response = self._get_request(url=self.action_endpoint, params=category_params)
-            data = response.json()
-            category_pages = data.get('query', {}).get('categorymembers', [])
-            todo_pages.update([page['title'] for page in category_pages])
-
-        if not todo_pages:
-            raise ValueError("No linked_template or category specified in settings")
-
-        return list(todo_pages)
-
-    def get_metadata(self, *, pageid: int=None, page_name: str=None) -> dict[str, str]:
-        """
-        Get specific page metadata via Action API Endpoint.
-        Including:
-        - pageid
-        - revid
-        - name
-        - namespace
-        - permission
-        with NO:
-        - content (wikitext)
-        and return in a map.
-        """
-        if not self.is_available:
-            raise ValueError("Wiki instance is not available")
+        self.tick()
+        level = str(level)
         params = {
-            'action': 'query',
-            'format': 'json',
-            'prop': 'info',
-            'inprop': 'protection'
+            "action": "parse",
+            "page": title,
+            "prop": "sections",
+            "format": "json"
         }
 
-        if pageid is not None:
-            params['pageids'] = pageid
-        elif page_name is not None:
-            params['titles'] = page_name
-        else:
-            raise ValueError("Either pageid or page_name must be provided")
-
-        response = self._get_request(url=self.action_endpoint, params=params)
+        response = http.session.get(self.api_endpoint, params=params)
+        if not response:
+            return []
 
         data = response.json()
-        if not isinstance(data, dict):
-            raise ValueError("Unexpected API response format: response is not a dictionary")
-        
-        pages = data.get('query', {}).get('pages', {})
 
-        for page_id, page_info in pages.items():
-            metadata = {
-                'title': page_info.get('title', ''),
-                'pageid': str(page_info.get('pageid', '')),
-                'revid': str(page_info.get('lastrevid', '')),
-                'namespace': str(page_info.get('ns', '')),
-                'permission': str(page_info.get('protection', [])[0].get('level', ''))
+        if "error" in data:
+            return []
+
+        sections = data.get("parse", {}).get("sections", [])
+
+        # 筛选二级标题 (level == "2")
+        level_sections = []
+        if not sections:
+            return []
+        for section in sections:
+            if section.get("level") == level:
+                level_sections.append(section.get("linkAnchor", "").strip())
+
+        return level_sections
+
+    def get_message_list(self, *, page: str) -> list[str]:
+        text = self.page(page).text
+        json_list = json.loads(text).get("targets", [])
+        result = []
+        for json_item in json_list:
+            result.append(json_item.get("title", ""))
+        return result
+
+    def new_section(self, title: str, section_title: str, content: str, summary: str) -> None:
+        page = self.page(title)
+        try:
+            old_text = page.text
+            new_text = old_text.strip() + "\n\n== " + section_title + " ==\n" + content
+            page.text = new_text
+            page.save(
+                summary=summary,
+                bot=True
+            )
+        except Exception as e:
+            self.logger.error(f"发布失败：{e}")
+
+    def mass_message(self, mass_message_list: str, title: str, content: str, summary: str) -> None:
+        message_list = self.get_message_list(page=mass_message_list)
+        self.logger.info(f"正在发布MassMessage到：{mass_message_list}\n标题：{title}\n内容：{content}\n摘要：{summary}")
+        for target in message_list:
+            try:
+                if not self.check_allow_bots(target):
+                    self.logger.info(f"该用户不允许机器人发送通知")
+                    continue
+                self.logger.info(f"\n正在发布到：{target}")
+                self.new_section(title=target, section_title=title, content=content, summary=summary)
+            except Exception as e:
+                self.logger.exception(e)
+                continue
+
+    def check_allow_bots(self, user: str) -> bool:
+        """
+        检查用户是否允许机器人操作
+        """
+        text: str = get_user_talk(user)
+        if not text:
+            return False
+        if re.search(r'\{\{(nobots|bots\|(allow=none|deny=.*?' + self.bot_name + r'.*?|optout=all|deny=all))\}\}', text):
+            return False
+        return True
+
+    def _check_suppressed_action(self) -> None:
+        """
+        检查用户是否禁止机器人操作
+        """
+        self._tick_disabled = True
+        try:
+            params = {
+                "action": "query",
+                "titles": "User:" + self.bot_name + "/block",
+                "prop": "revisions",
+                "rvprop": "ids",
+                "format": "json"
             }
-            return metadata
+            response = http.session.get(self.api_endpoint, params=params)
+            if not response:
+                return
+            data = response.json()["query"]["pages"]
+            page_data= next(iter(data.values()))
+            if "revisions" in page_data:
+                revid = page_data["revisions"][0]["revid"]
+                if not os.path.exists(self.heartbeat_file):
+                    with open(self.heartbeat_file, 'w', encoding='utf-8') as f:
+                        f.write(str(revid))
+                        self.heartbeat = str(revid)
+                        return
+                else:
+                    with open(self.heartbeat_file, 'r', encoding='utf-8') as f:
+                        heartbeat_in_file = f.read()
+                if heartbeat_in_file and not self.heartbeat:
+                    self.heartbeat = str(heartbeat_in_file)
+                if str(self.heartbeat) != str(revid):
+                    self.logger.critical("机器人被禁止操作")
+                    mailer.email("机器人被禁止操作", "机器人被禁止操作，请及时处理！")
+                    sys.exit(1)
+        finally:
+            self._tick_disabled = False
 
-    def get_content(self, page_name: str) -> str:
-        """
-        Get Wikitext via page_name and REST API Endpoint
-        """
-        if not self.is_available:
-            raise ValueError("Wiki instance is not available")
-        headers: dict[str, str] = {'User-Agent': self.user_agent}
-        if self.access_token:
-            headers['Authorization'] = f'Bearer {self.access_token}'
-
-        response = self._get_request(
-            url=f"{self.rest_endpoint}/v1/page/{page_name}",
-        )
-
-        data = response.json()
-        if not isinstance(data, dict):
-            raise ValueError("Unexpected API response format: response is not a dictionary")
-        return data.get('source', '')
-
-    def set_content(self, wikitext: Wikitext) -> None:
-        """
-        Set Wikitext via page_name and REST API Endpoint
-        """
-        if not self.is_available:
-            raise ValueError("Wiki instance is not available")
-
-        data: dict[str, str] = {
-            'source': wikitext.processed_content,
-            'comment': settings.edit_comment,
-            'latest': { "id": int(wikitext.revid) }
-           }
-
-        response: requests.Response = self._put_request(
-            url=f"{self.rest_endpoint}/v1/page/{wikitext.title.replace('/', '%2F')}",
-            data=data
-        )
-
-        result = response.json()
-        #TODO: Verify what the response looks like
-        if 'error' in result:
-            raise Exception(f"Failed to set content: {result['error']}")
+    @property
+    def site(self) -> pywikibot.Site:
+        """获取 Pywikibot Site（懒初始化）"""
+        if self._site is None:
+            oauth_token = os.environ.get("MW_BOT_OAUTH_TOKEN")
+            if not oauth_token:
+                raise ValueError("未找到 MW_BOT_OAUTH_TOKEN 环境变量")
+            config.user_agent_format = 'Qiuwen/1.1 {username}/{script} ({script_comments}) {pwb}' '{python} {http_backend}'
+            config.cosmetic_changes = True
+            config.datafilepath(os.path.join(PROJECT_ROOT, "data", "pwb"))
+            config.minthrottle = 2
 
 
+            self._site = pywikibot.Site(
+                code="zh",
+                fam="qiuwen",
+                user=self.bot_name,
+            )
 
-wiki_instance: WikiInstance = WikiInstance()
+            self.logger.info("已初始化 Pywikibot Site")
+
+        self.tick()
+        return self._site
+
+    def page(self, title):
+        return pywikibot.Page(self.site, title)
+
+    def category(self, title):
+        return pywikibot.Category(self.site, title)
+
+    def user(self, name):
+        return pywikibot.User(self.site, name)
+
+    def file(self, title):
+        return pywikibot.FilePage(self.site, title)
+
+    def tick(self):
+        if self._tick_disabled:          # 若被禁用则直接返回
+            return
+        self.request_count += 1
+        if self.request_count >= 20:
+            self._check_suppressed_action()
+            self.request_count = 0
+
+wiki = Wiki(bot_name="Lemonade-bot")
+
+_original_request = http.session.request
+
+OAUTH_TOKEN = os.environ.get("MW_BOT_OAUTH_TOKEN")
+
+def guarded_request(method, url, *args, **kwargs):
+    # 这里拿不到 self，所以需要全局 wiki 实例
+    wiki.tick()
+    print(f"Wiki request: {method} {url} {kwargs}")
+    headers = kwargs.get('headers', {})
+    if OAUTH_TOKEN and 'Authorization' not in headers:
+        headers['Authorization'] = f'Bearer {OAUTH_TOKEN}'
+        kwargs['headers'] = headers
+
+    return _original_request(method, url, *args, **kwargs)
+
+
+http.session.request = guarded_request

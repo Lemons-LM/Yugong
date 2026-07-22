@@ -60,30 +60,46 @@ def do_jobs()-> None:
 def _process_single_page(page_name: str) -> None:
     metadata: dict[str, str] = wiki_instance.get_metadata(page_name=page_name)
     wikitext: Wikitext = Wikitext(metadata)
-    content: str =wiki_instance.get_content(page_name=page_name)
-    wikitext.set_content(content)
+    content: str = wiki_instance.get_content(page_name=page_name)
+    wikitext.parse(content)
     step_count: int = 1
-    logger.log_step(directory=page_name,file_name="000_before_process", content=content)
+    logger.log_step(directory=page_name, file_name="000_before_process", content=content)
     logger.log_summary(f"\n\nPage name: {page_name}\nEnabled extensions:\n")
     print(f"Begin processing {page_name}:")
+
     for job in JOBS:
-        wikitext_new: Wikitext = job(wikitext)
-        if wikitext_new.processed_content != wikitext.processed_content:
-            wikitext.update(wikitext_new.processed_content)
+        old_content = str(wikitext.wikitext)
+        job(wikitext)
+        new_content = str(wikitext.wikitext)
+        wikitext.processed_content = new_content
+
+        if old_content != new_content:
             logger.log_summary(f'"{job.__name__}", ')
-            logger.log_step(directory=page_name,file_name=f"{step_count:03d}_after_{job.__name__}", content=wikitext.processed_content,is_debug=True)
+            logger.log_step(
+                directory=page_name,
+                file_name=f"{step_count:03d}_after_{job.__name__}",
+                content=new_content,
+                is_debug=True
+            )
             step_count += 1
 
-    logger.log_step(directory=page_name,file_name="999_after_process", content=wikitext.processed_content)
+    logger.log_step(directory=page_name, file_name="999_after_process", content=str(wikitext.wikitext))
 
-    if wikitext.processed_content != content:
+    if content != str(wikitext.wikitext):
         if settings.submit_changes:
-            wiki_instance.set_content(wikitext)
+            try:
+                wiki_instance.set_content(wikitext)
+                print(f"Successfully submitted changes to {page_name}")
+            except Exception as e:
+                print(f"Failed to submit changes: {e}")
+                pyperclip.copy(str(wikitext.wikitext))
+                edit_url = f"{wiki_instance.api_endpoint}index.php?title={page_name}&action=edit"
+                webbrowser.open(edit_url)
+                input("The new wikitext has been copied to your clipboard.\nSubmit failed, please manually paste and submit it.\nPress any key to continue...")
         else:
-            pyperclip.copy(wikitext.processed_content)
+            pyperclip.copy(str(wikitext.wikitext))
             edit_url = f"{wiki_instance.api_endpoint}index.php?title={page_name}&action=edit"
             webbrowser.open(edit_url)
             input("The new wikitext has been copied to your clipboard.\nDue to settings, you need to manually paste and submit it.\nPress any key to continue...")
     else:
         print(f"No changes made to {page_name}, continue.")
-

@@ -38,6 +38,7 @@ class Wikitext:
         Parse the content to Wikicode Object
         """
         self._original_content = content
+        self.processed_content = content
         self.wikitext = mph.parse(content)
 
     def update(self, content) -> None:
@@ -45,8 +46,10 @@ class Wikitext:
         Set the content to Wikicode Object
         """
         if type(content) == str:
+            self.processed_content = content
             self.wikitext = mph.parse(content)
         elif type(content) == mph.wikicode.Wikicode:
+            self.processed_content = str(content)
             self.wikitext = content
         else:
             raise TypeError("Content must be str or Wikicode")
