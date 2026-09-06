@@ -33,6 +33,7 @@ class BotLogger:
         return getattr(self._logger, name)
 
 
+#TODO: change level to config
 def get_logger(name: str, level: int = logging.DEBUG) -> BotLogger:
     if name not in _LOGGERS:
         _LOGGERS[name] = BotLogger(name, level)

@@ -12,6 +12,8 @@ How to configure and run YuGong as an automated robot (bot).
 
 ### 1. `settings.toml`
 
+In most cases, you need to set your wiki connection information in wiki.py and pwb_related.py
+
 Minimum configuration for robot mode:
 
 ```toml

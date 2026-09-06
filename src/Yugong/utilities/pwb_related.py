@@ -9,6 +9,7 @@ class QiuwenFamily(family.Family):
     name = "qiuwen"
     langs = {"zh": getattr(settings, 'wiki_domain', 'www.qiuwenbaike.cn')}
 
+    # TODO: this in config
     def scriptpath(self, code):
         return ""
 

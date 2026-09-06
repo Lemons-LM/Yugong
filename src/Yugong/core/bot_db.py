@@ -73,7 +73,8 @@ class BotDB:
                 CREATE TABLE IF NOT EXISTS template (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
-                    target TEXT NOT NULL
+                    target TEXT NOT NULL,
+                    type TEXT
                 )
             """)
 
@@ -89,7 +90,16 @@ class BotDB:
                 CREATE TABLE IF NOT EXISTS category (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
-                    target TEXT NOT NULL
+                    target TEXT NOT NULL,
+                    sort_index TEXT
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS zh_convert (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hans TEXT NOT NULL,
+                    hant TEXT NOT NULL
                 )
             """)
 
