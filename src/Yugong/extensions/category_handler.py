@@ -1,35 +1,36 @@
-"""
-Category handler: convert categories to zh-Hans, follow redirect templates,
-and cache results in the database to avoid repeated API requests.
+"""Normalise category links: convert to zh-Hans and follow category redirects.
 
-When a category name differs from its zh-Hans form, the extension checks the
-category page for a ``{{分类重定向|目标分类|分类索引}}`` template.  If found,
-the original wikitext category link is rewritten to the redirect target.
+When a category name differs from its Simplified-Chinese form, the extension
+looks up the zh-Hans category page.  If that page carries a
+``{{分类重定向|目标分类|分类索引}}`` template, the link on the article is
+rewritten to the redirect target.
 
-All lookups are cached in the ``category`` table of bot_db.
+Lookups are cached in the ``category`` table of :mod:`src.Yugong.core.bot_db`,
+so each category is resolved once per machine.  OpenCC is optional: without it
+the redirect lookup is simply skipped.
 """
+
+from __future__ import annotations
 
 import re
+from typing import Any
 
 import pywikibot
 
 from src.Yugong.core.bot_db import bot_db
+from src.Yugong.core.logger import utilities_logger
 from src.Yugong.core.wiki import wiki
 from src.Yugong.core.wikitext import Wikitext
-from src.Yugong.utilities.mark_job_intro import job, intro
+from src.Yugong.utilities.mark_job_intro import intro, job
 
-#TODO: Cr names
-# Category namespace prefixes (Chinese + English)
-_CATEGORY_PREFIXES = (
+#: bot_db table holding category redirect information.
+CATEGORY_TABLE: str = "category"
+
+#: Category namespace prefixes (Chinese + English + French).
+_CATEGORY_PREFIXES: tuple[str, ...] = (
     "category:", "catégorie:",
     "分类:", "分類:",
 )
-
-# Category redirect template names
-_CAT_REDIRECT_NAMES = frozenset({
-    "分类重定向", "分類重新導向", "Category redirect",
-    "cr", "Catredirect", "Cat-redirect",
-})
 
 _CAT_REDIRECT_RE = re.compile(
     r'\{\{(?:分类重定向|分類重新導向|Category redirect|cr|Catredirect|Cat-redirect)'
@@ -39,19 +40,33 @@ _CAT_REDIRECT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# OpenCC is an optional dependency; build the converter once and warn once.
+_converter: Any = None
+_converter_missing_reported = False
+
 
 def _to_zh_hans(text: str) -> str:
-    """Convert *text* to Simplified Chinese (zh-Hans).  No-op if converter unavailable."""
-    try:
-        import opencc
-        converter = opencc.OpenCC("t2s.json")  # Traditional → Simplified
-        return converter.convert(text)
-    except (ImportError, Exception):
-        return text
+    """Convert *text* to Simplified Chinese, or return it unchanged."""
+    global _converter, _converter_missing_reported
+
+    if _converter is None:
+        try:
+            import opencc
+        except ImportError:
+            if not _converter_missing_reported:
+                utilities_logger.warning(
+                    "opencc is not installed; category names will not be "
+                    "converted to zh-Hans (pip install opencc)"
+                )
+                _converter_missing_reported = True
+            return text
+        _converter = opencc.OpenCC("t2s.json")  # Traditional -> Simplified
+
+    return str(_converter.convert(text))
 
 
 def _strip_category_prefix(title: str) -> str:
-    """Remove the category namespace prefix, returning the bare category name."""
+    """Return the bare category name without its namespace prefix."""
     lowered = title.lower()
     for prefix in _CATEGORY_PREFIXES:
         if lowered.startswith(prefix):
@@ -59,82 +74,76 @@ def _strip_category_prefix(title: str) -> str:
     return title
 
 
-def _parse_redirect_template(text: str) -> tuple[str | None, str | None]:
-    """Return (target_category_name, index) from a redirect template, or (None, None)."""
-    m = _CAT_REDIRECT_RE.search(text)
-    if m:
-        return m.group("target").strip(), (m.group("index") or "").strip()
-    return None, None
+def _category_prefix(title: str) -> str:
+    """Return the namespace prefix *title* uses, preserving its spelling."""
+    lowered = title.lower()
+    for prefix in _CATEGORY_PREFIXES:
+        if lowered.startswith(prefix):
+            return title[:len(prefix)]
+    return ""
 
 
-@job
+def _parse_redirect_template(text: str) -> tuple[str | None, str]:
+    """Return ``(target, index)`` from a category-redirect template."""
+    match = _CAT_REDIRECT_RE.search(text)
+    if not match:
+        return None, ""
+    return match.group("target").strip(), (match.group("index") or "").strip()
+
+
+def _rewrite_category_link(link: Any, target: str) -> None:
+    """Point a category wikilink at *target*.
+
+    Only ``link.title`` changes.  The sort key of ``[[Category:A|key]]`` lives in
+    ``link.text``, so it is preserved automatically.
+    """
+    original_title = str(link.title).strip()
+    link.title = _category_prefix(original_title) + target
+
+
+@job(needs_wiki=True)
 def category_handler_job(wikitext: Wikitext) -> None:
-    """Process all category wikilinks on the page."""
-
-    for link in list(wikitext.wikitext.filter_wikilinks()):
+    """Process every category link on the page."""
+    for link in wikitext.wikilinks():
         original_title = str(link.title).strip()
         lowered = original_title.lower()
 
-        # Only process category links
-        if not any(lowered.startswith(p) for p in _CATEGORY_PREFIXES):
+        if not any(lowered.startswith(prefix) for prefix in _CATEGORY_PREFIXES):
             continue
 
-        cat_name = _strip_category_prefix(original_title)
+        cat_name = _strip_category_prefix(original_title).strip()
+        if not cat_name:
+            continue
 
-        # Check DB cache first
-        cached = bot_db.search("category", {"title": cat_name})
+        cached = bot_db.search(CATEGORY_TABLE, {"title": cat_name})
         if cached:
-            record = cached[0]
-            target = record.get("target")
+            target = cached[0].get("target")
             if target and target != cat_name:
-                _rewrite_category_link(link, original_title, target)
+                _rewrite_category_link(link, str(target))
             continue
 
-        # Convert to zh-Hans
         zh_hans_name = _to_zh_hans(cat_name)
-
-        target_cat = cat_name  # default: no change
+        target_cat = cat_name
         cat_index = ""
 
         if zh_hans_name and zh_hans_name != cat_name:
-            # Check if the zh-Hans category page has a redirect template
+            cat_page = pywikibot.Page(wiki.site, f"Category:{zh_hans_name}")
+            redirect_target: str | None = None
             try:
-                cat_page = pywikibot.Page(wiki.site, f"Category:{zh_hans_name}")
-                page_text = cat_page.text
+                redirect_target, cat_index = _parse_redirect_template(cat_page.text)
+            except pywikibot.exceptions.NoPageError:
+                redirect_target = None
+            if redirect_target:
+                target_cat = redirect_target
 
-                redirect_target, cat_index = _parse_redirect_template(page_text)
-                if redirect_target:
-                    target_cat = redirect_target
-            except Exception:
-                pass
-
-        # Record in DB (always, to avoid repeated lookups)
-        bot_db.insert("category", {
+        bot_db.insert(CATEGORY_TABLE, {
             "title": cat_name,
             "target": target_cat,
             "sort_index": cat_index,
         })
 
-        # Rewrite the link if the target changed
         if target_cat != cat_name:
-            _rewrite_category_link(link, original_title, target_cat)
-
-
-def _rewrite_category_link(link, original_title: str, target: str) -> None:
-    """Update a category wikilink to point to *target* instead of *original_title*."""
-    prefix = ""
-    for p in _CATEGORY_PREFIXES:
-        if original_title.lower().startswith(p):
-            prefix = original_title[:len(p)]
-            break
-
-    new_title = prefix + target
-    # Preserve sort key if present
-    split = original_title.split("|", 1)
-    if len(split) > 1:
-        new_title += "|" + split[1]
-
-    link.title = new_title
+            _rewrite_category_link(link, target_cat)
 
 
 @intro

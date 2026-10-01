@@ -10,38 +10,50 @@ YuGong is a Python-based automated wiki editing tool designed to help users batc
 
 - **Automated Wiki Editing**: Supports batch page processing on specified wiki sites
 - **Task Processing**: Support template (`{{}}`), link(`[[]]`/`[]`) and tags (`<foo>`)
+- **Page Selection**: Pick pages by id range, by the template they transclude (`linked_template`), or by category membership (`category`) — the sources combine and deduplicate
+- **Template Rules**: TOML rules in `template_rules/` are applied as the first step of every page, before the extensions run
 - **Safety First**: If something might lead to vandalism, make the entire program doesn't work.
 - **Extensible Architecture**: Tasks are registered through the `Extensions` directory
-- **Safety Controls**: Built-in risk control mechanisms including diff size checking and dangerous tag detection
-- **Chinese Conversion**: Cangjie auto convert zh-Hans <=> zh-Hant, and other varients, via NoteTA so make sure no wrong convertions.
+- **Safety Controls**: Built-in risk control mechanisms including diff size checking, dangerous tag detection, a PID-based run lock and a wiki-side kill switch
+- **Offline Dev Mode**: `python main.py --dev INPUT OUTPUT` runs the whole pipeline against a local wikitext file without editing anything
+- **Optional Chinese Conversion**: the `category_handler` extension converts category titles through OpenCC when OpenCC happens to be installed. Cangjie / automatic zh variant conversion is *not* implemented — `enable_cangjie = true` fails loudly instead of doing nothing.
 
 ## Installation and Configuration
 
 ### Requirements
 
-- Python 3.12+
-- Related dependency packages (dependencies to be added)
+- Python 3.10+
+- The packages listed in [requirements.txt](requirements.txt)
 
 ### Installation Steps
 
 1. Clone the project repository
 2. Install the dependency environment
-3. Configure [LocalSettings.txt](settings.toml)
+3. Configure [settings.toml](settings.toml)
 4. Run:
 
 ```shell
 cd path_to_project
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
 python3 main.py
+```
+
+For an editable install (needed if you want a stable `src.Yugong...` import from anywhere) and the development tools, use:
+
+```shell
+pip install -e ".[dev]"
 ```
 
 ### Configuration Guide
 
-Set up [settings.toml](settings.toml)
+Set up [settings.toml](settings.toml). At minimum you must provide `api_endpoint` plus one way of selecting pages (`page_id_start`/`page_id_end`, `linked_template` or `category`); the program validates the file before touching the wiki and refuses to start with a descriptive message when something is missing or contradictory.
 
-Note that we currently do not support login methods other than OAuth token, and OAuth token requires setting the environment variable `MW_OAUTH_TOKEN`. And now you must set `is_owner_only` to true in setting file.
+Note that we currently do not support login methods other than OAuth token, and OAuth token requires setting the environment variable `MW_OAUTH_TOKEN` (the older `MW_BOT_OAUTH_TOKEN` still works as a legacy fallback). And now you must set `is_owner_only` to true in setting file.
+
+Set `YUGONG_SETTINGS` to point at an alternative settings file (a second wiki, an isolated test run, …) instead of `<repo>/settings.toml`.
 
 ## Extension Development
 
@@ -54,23 +66,42 @@ Follow these steps to create custom extensions:
 3. Implement specific template processing logic
 4. Add task introduction description
 
+See the [Extension Development Guide](docs/extension-dev.md) for the `needs_wiki` marker and the offline test loop.
+
 ## Usage Workflow
 
-1. **Initialization Confirmation**: User confirms understanding of usage responsibilities
-2. **Configuration Loading**: Read and validate [LocalSettings.txt](settings.toml) configuration
-3. **Task Preview**: Display all extension task descriptions
+1. **Initialization Confirmation**: User confirms understanding of usage responsibilities (skipped when `bypass_confirm_settings = true`)
+2. **Configuration Loading**: Read and validate [settings.toml](settings.toml) configuration
+3. **Task Preview**: Display all extension task descriptions and the loaded template rules
 4. **Execution Processing**: Connect to wiki instance and execute processing
 5. **Result Output**: Show processing results and provide follow-up actions:
-   1. **Current (MVP phase)**: After processing a page, copy the text to the clipboard, open a page in the browser and let the user paste and submit manually
-   2. **Target**: Auto submit or after a human review on diff
+   1. **Auto submit (`submit_changes = true`)**: The new text is saved with `edit_comment` as the summary
+   2. **Manual review (`submit_changes = false`)**: The new text is copied to the clipboard, the editor page is opened in the browser, and the program blocks until the user has pasted and submitted it
 
 ## Safety Mechanisms
 
 - **User Confirmation**: Mandatory user confirmation of responsibilities and configurations
 - **Risk Control**: Configurable risk level controls
-- **Diff Checking**: Validation of edit differences before and after
-- **Dangerous Tag Detection**: Identification and handling of unsafe HTML tags
+- **Diff Checking**: Validation of edit differences before and after (`max_acceptable_diff_size`)
+- **Dangerous Tag Detection**: `unsafe_tag_list` (deny-list) or `safe_tag_list` (allow-list); a forbidden tag aborts the run by default (`is_dangerous_tag_unacceptable = true`) or skips just that page
+- **Run Lock**: A PID-based lock in `data/lock` stops two YuGong processes from editing at once; stale locks from dead processes are reclaimed
+- **Kill Switch**: Every 20 API requests the bot checks `User:<bot_name>/block` and stops if the page's revision changed
+- **Daily Heartbeat**: With `enable_heartbeat = true`, a duplicate run on the same UTC day logs, e-mails and stops
 - **Strong Data Type/Checking**: Make sure no error on input data
+
+## Testing
+
+The test suite is plain `unittest` (no pytest dependency):
+
+```shell
+python -m unittest discover
+```
+
+Type checking uses the configuration in `pyproject.toml`:
+
+```shell
+mypy
+```
 
 ## Important Notes
 
@@ -91,4 +122,4 @@ Follow these steps to create custom extensions:
 
 ## Contributing
 
-Contributions are welcome, as long as follow the [legal terms](LEGAL.md). Please read [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome, as long as follow the [legal terms](LEGAL.md). Please read [CONTRIBUTIONS.md](CONTRIBUTIONS.md).

@@ -1,94 +1,111 @@
-import toml
+"""TOML-driven template transformation rules.
 
+Rules live in ``template_rules/*.toml`` and are loaded by
+:meth:`TemplateFormatter.get_ruleset`.  :meth:`TemplateFormatter.format_template`
+is the processing step that :mod:`src.Yugong.processor.do_jobs` runs on every
+page — without it the rules would be loaded and printed but never applied.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+import mwparserfromhell as mph
+import toml
+from mwparserfromhell.nodes.extras import Parameter
+
+from src.Yugong.core.logger import logger
+from src.Yugong.core.settings import settings
 from src.Yugong.core.wikitext import Wikitext
 from src.Yugong.utilities.check_same_website import check_same_website
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
-import mwparserfromhell as mph
+
 
 class TemplateFormatter:
-    """
-    Template formatter
-    """
-    RULES = {}
-    def __init__(self):
-        pass
+    """Applies template rules to the templates found on a page."""
+
+    RULES: dict[str, dict[str, Any]] = {}
+
+    #: Whether :meth:`get_ruleset` has run at least once.
+    loaded: bool = False
 
     def format_template(self, wikitext: Wikitext) -> None:
-        code: mph.wikicode.Wikicode = wikitext.wikitext
+        """Apply every matching rule to every template on the page."""
+        code = wikitext.wikitext
+        if code is None:
+            return
+
         for template in list(code.filter_templates()):
-            raw_name = self._safe_capitalize(template.name)
-            rule = self.RULES.get(raw_name)
+            rule = self.RULES.get(self._safe_capitalize(str(template.name)))
             if rule:
                 self.apply_template_rule(code=code, template=template, rule=rule)
 
-    def apply_template_rule(self, code: mph.wikicode.Wikicode, template: mph.wikicode.Template, rule: dict) -> None:
-        template_level = rule["template_level"]
+    def apply_template_rule(
+        self,
+        code: mph.wikicode.Wikicode,
+        template: mph.wikicode.Template,
+        rule: dict[str, Any],
+    ) -> None:
+        """Apply one rule to one template."""
+        template_level: dict[str, Any] = rule.get("template_level", {})
+        names: list[str] = rule.get("names", [])
 
         if template_level.get("delete"):
             code.remove(template)
             return
 
         if template_level.get("replace"):
-            replace_str = template_level["replace"]
-            new_code = mph.parse(replace_str)
-
-            def resolve_argument(wiki_node):
-                if not isinstance(wiki_node, mph.nodes.Argument):
-                    return None
-
-                param_name = str(wiki_node.name).strip()
-
-                try:
-                    param = template.get(param_name)
-                    return str(param.value).strip()
-
-                except ValueError:
-                    if wiki_node.default is not None:
-                        default_code = mph.parse(str(wiki_node.default))
-                        for child in list(
-                                default_code.ifilter_arguments(recursive=True)
-                        ):
-                            result = resolve_argument(child)
-                            if result is not None:
-                                default_code.replace(child, result)
-                        return str(default_code)
-                    return str(wiki_node)
-
-            for node in list(new_code.ifilter_arguments(recursive=True)):
-                resolved = resolve_argument(node)
-                if resolved is not None:
-                    new_code.replace(node, mph.parse(resolved))
-
-            code.replace(template, new_code)
+            code.replace(template, self._render_replacement(template, template_level["replace"]))
             return
 
+        if template_level.get("rename") and names and settings.overwrite_template_name:
+            template.name = names[0]
 
-        if template_level.get("rename") and rule["names"]:
-            template.name = rule["names"][0]
-
-        params_config = rule.get("params", [])
-        for param_config in params_config:
+        for param_config in rule.get("params", []):
             self.apply_param_rule(template, param_config)
 
     @staticmethod
-    def apply_param_rule(template: mph.wikicode.Template, param_config: dict) -> None:
-        param_names = param_config.get("names", [])
-        if not param_names:
-            return
+    def _render_replacement(template: mph.wikicode.Template, replacement: str) -> mph.wikicode.Wikicode:
+        """Expand ``{{{name|default}}}`` placeholders against *template*."""
+        new_code = mph.parse(replacement)
 
-        import re
+        def resolve_argument(wiki_node: mph.nodes.Node) -> str | None:
+            if not isinstance(wiki_node, mph.nodes.Argument):
+                return None
+
+            param_name = str(wiki_node.name).strip()
+            try:
+                return str(template.get(param_name).value).strip()
+            except ValueError:
+                if wiki_node.default is None:
+                    return str(wiki_node)
+
+                default_code = mph.parse(str(wiki_node.default))
+                for child in list(default_code.ifilter_arguments(recursive=True)):
+                    resolved = resolve_argument(child)
+                    if resolved is not None:
+                        default_code.replace(child, mph.parse(resolved))
+                return str(default_code)
+
+        for node in list(new_code.ifilter_arguments(recursive=True)):
+            resolved = resolve_argument(node)
+            if resolved is not None:
+                new_code.replace(node, mph.parse(resolved))
+
+        return new_code
+
+    @staticmethod
+    def apply_param_rule(template: mph.wikicode.Template, param_config: dict[str, Any]) -> None:
+        """Apply one ``[[params]]`` block to a template."""
+        name_patterns: list[str] = param_config.get("names", [])
+        if not name_patterns:
+            return
 
         params_to_remove = []
         for param in list(template.params):
             param_name = str(param.name).strip()
-
-            matched = False
-            for name_pattern in param_names:
-                if re.fullmatch(name_pattern, param_name):
-                    matched = True
-                    break
-
-            if not matched:
+            if not any(re.fullmatch(pattern, param_name) for pattern in name_patterns):
                 continue
 
             if param_config.get("delete"):
@@ -96,69 +113,119 @@ class TemplateFormatter:
                 continue
 
             if param_config.get("rename") and param_config.get("new_name"):
-                param.name = param_config["new_name"]
+                if settings.overwrite_para_name:
+                    param.name = str(param_config["new_name"])
 
-            match_configs = param_config.get("match", [])
-            if match_configs:
-                for match_config in match_configs:
-                    condition = match_config.get("condition", "")
-                    mode = match_config.get("mode", True)
-                    match_replacement = match_config.get("match", "")
-                    replacement = match_config.get("replacement", "")
-
-                    if condition:
-                        param_value = str(param.value).strip()
-                        should_apply = bool(re.search(condition, param_value)) == mode
-
-                        if should_apply:
-                            if match_replacement and replacement:
-                                new_value = re.sub(match_replacement, replacement, param_value)
-                                param.value = new_value
-                            elif replacement:
-                                param.value = replacement
+            for match_config in param_config.get("match", []):
+                TemplateFormatter._apply_match_rule(param, match_config)
 
         for param in params_to_remove:
             template.remove(param)
 
     @staticmethod
-    def _safe_capitalize(text):
-        if not text:
+    def _apply_match_rule(param: Parameter, match_config: dict[str, Any]) -> None:
+        condition = str(match_config.get("condition", ""))
+        mode = bool(match_config.get("mode", True))
+        match_pattern = str(match_config.get("match", ""))
+        replacement = str(match_config.get("replacement", ""))
+
+        if not condition:
             return
+
+        param_value = str(param.value).strip()
+        should_apply = bool(re.search(condition, param_value)) == mode
+        if not should_apply:
+            return
+
+        if match_pattern and replacement:
+            # ``re.sub`` on a pattern that can match the empty string (the
+            # documented ``match = ".*"``) fires twice: once for the whole value
+            # and once for the empty match at the end, yielding "deaddead".
+            # When the pattern covers the whole value, expand it directly.
+            whole = re.fullmatch(match_pattern, param_value)
+            if whole is not None:
+                param.value = whole.expand(replacement)
+            else:
+                param.value = re.sub(match_pattern, replacement, param_value)
+        elif replacement:
+            param.value = replacement
+
+    @staticmethod
+    def _safe_capitalize(text: str) -> str:
+        """MediaWiki treats the first letter of a title case-insensitively."""
         text = text.strip()
-        if text[0].isalpha() and text[0].isupper():
-            return text
-        if not text[0].isalpha():
+        if not text or not text[0].isalpha():
             return text
         return text[0].upper() + text[1:]
 
-    def get_ruleset(self):
-        def add_rule(json_rule: dict, file_name: str):
-            print("Apply rule: ", file_name)
-            print("Introduction: ", json_rule["introduction"])
-            for name in json_rule["names"]:
-                if name:
-                    self._register_rule(
-                        name,
-                        {
-                            "file_name": file_name,
-                            "template_level": json_rule.get("template_level", {}),
-                            "params": json_rule.get("params", []),
-                        },
-                    )
-        for file in PROJECT_ROOT.glob("template_rules/*.toml"):
-            rule = toml.load(file)
-            rule["file_name"] = file.name
-            apply_websites = rule.get("apply_websites", [])
-            if apply_websites:
-                for website in rule["apply_websites"]:
-                    if check_same_website(website):
-                        add_rule(rule, file.name)
-                continue
-            else:
-                add_rule(rule, file.name)
+    # ── Rule loading ──────────────────────────────────────────────────
 
-    def _register_rule(self, name: str, rule: dict):
+    def get_ruleset(self) -> None:
+        """(Re)load every ``template_rules/*.toml`` file into :attr:`RULES`.
+
+        Rules that do not apply to the configured wiki are skipped; malformed
+        rules abort the run with a descriptive error instead of being ignored.
+        """
+        self.RULES.clear()
+
+        for file in sorted(PROJECT_ROOT.glob("template_rules/*.toml")):
+            rule: dict[str, Any] = toml.load(file)
+            rule["file_name"] = file.name
+
+            apply_websites: list[str] = rule.get("apply_websites", []) or []
+            if apply_websites and not any(check_same_website(site) for site in apply_websites):
+                logger.info(f"Skipping rule {file.name}: does not apply to this wiki")
+                continue
+
+            self._add_rule(rule, file.name)
+
+        self.loaded = True
+
+    def ensure_ruleset(self) -> None:
+        """Load the rules once.
+
+        The processing loop calls this so that ``do_jobs()`` applies the rules
+        even when it is invoked without the interactive ``confirm_settings()``
+        step, while a normal run does not load and print them twice.
+        """
+        if not self.loaded:
+            self.get_ruleset()
+
+    def _add_rule(self, rule: dict[str, Any], file_name: str) -> None:
+        names: list[str] = [str(name) for name in rule.get("names", []) if name]
+        if not names:
+            raise ValueError(f"Template rule {file_name} has no usable 'names' entry.")
+        if not rule.get("introduction"):
+            raise ValueError(f"Template rule {file_name} is missing 'introduction'.")
+
+        template_level: dict[str, Any] = rule.get("template_level", {}) or {}
+        self._validate_template_level(template_level, file_name)
+
+        print(f"Apply rule: {file_name}")
+        print(f"Introduction: {rule['introduction']}")
+
+        entry = {
+            "file_name": file_name,
+            "names": names,
+            "template_level": template_level,
+            "params": rule.get("params", []) or [],
+        }
+        for name in names:
+            self._register_rule(str(name), entry)
+
+    @staticmethod
+    def _validate_template_level(template_level: dict[str, Any], file_name: str) -> None:
+        actions = [key for key in ("delete", "replace", "rename") if template_level.get(key)]
+        if len(actions) > 1:
+            raise ValueError(
+                f"Template rule {file_name} sets conflicting [template_level] actions "
+                f"{actions}: use exactly one of rename/delete/replace."
+            )
+
+    def _register_rule(self, name: str, rule: dict[str, Any]) -> None:
         key = self._safe_capitalize(name)
+        if not key:
+            raise ValueError(f"Template rule {rule['file_name']} has an empty name entry.")
 
         if key in self.RULES:
             raise ValueError(
@@ -167,5 +234,6 @@ class TemplateFormatter:
             )
 
         self.RULES[key] = rule
+
 
 formatter: TemplateFormatter = TemplateFormatter()

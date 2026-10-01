@@ -1,74 +1,69 @@
-"""
-Fix unnamed-parameter pipe ambiguity in Cite templates.
+"""Fix unnamed-parameter pipe ambiguity in Cite-* templates.
 
-For Cite-* templates, the ``|`` separator before every unnamed (positional)
-parameter is replaced with ``{{!}}``.  This prevents MediaWiki from interpreting
-bare ``|`` characters inside URLs or other parameter values as parameter
-separators when the page is re-rendered.
+Qiuwen's ``Cite*`` templates are called with anonymous (positional) parameters
+whose first value is a URL.  A bare ``|`` inside such a value would be read by
+MediaWiki as the next parameter separator, so everything after the first
+anonymous parameter is joined onto it with ``{{!}}`` instead::
 
-The extension rebuilds affected templates so the output wikitext uses
-``{{!}}`` as the separator for all unnamed parameters.
+    {{Cite web|http://example.com|Foo|title=Bar}}
+    ->
+    {{Cite web|http://example.com{{!}}Foo|title=Bar}}
+
+The first anonymous parameter keeps its plain ``|`` because that pipe is the
+template-name separator.  This behaviour is deliberate and locked down by
+tests/test_extensions.py.
 """
+
+from __future__ import annotations
 
 import re
 
-from src.Yugong.core.wikitext import Wikitext
-from src.Yugong.utilities.mark_job_intro import job, intro
-
 import mwparserfromhell as mph
 
+from src.Yugong.core.wikitext import Wikitext
+from src.Yugong.utilities.mark_job_intro import intro, job
+
+#: Matches "Cite web", "Cite_web", "Cite book", ...
 _CITE_RE = re.compile(r"^Cite[\s_]", re.IGNORECASE)
 
 
-def _build_param_str(param) -> str:
-    """Return the wikitext for a single template parameter."""
-    value = str(param.value)
-    if param.showkey:
-        return f"|{param.name}={value}"
-    else:
-        # Use {{!}} as separator for unnamed params
-        return f"{{{{!}}}}{value}"
+def _needs_escape(template: mph.wikicode.Template) -> bool:
+    """Return ``True`` if *template* has at least one anonymous parameter."""
+    return any(not param.showkey for param in template.params)
 
 
-def _needs_escape(template) -> bool:
-    """Return True if *template* has any unnamed (positional) parameter."""
+def _rebuild(template: mph.wikicode.Template) -> str:
+    """Render *template*, joining later anonymous parameters with ``{{!}}``."""
+    parts = ["{{", str(template.name).strip()]
+    seen_anonymous = False
+
     for param in template.params:
-        if not param.showkey:
-            return True
-    return False
+        value = str(param.value)
+        if param.showkey:
+            parts.append(f"|{param.name}={value}")
+        elif not seen_anonymous:
+            # The first pipe after the template name is a real separator.
+            parts.append(f"|{value}")
+            seen_anonymous = True
+        else:
+            parts.append(f"{{{{!}}}}{value}")
+
+    parts.append("}}")
+    return "".join(parts)
 
 
 @job
 def fix_cite_template_job(wikitext: Wikitext) -> None:
-    """Replace pipe separators before unnamed Cite-* params with {{!}}."""
-
-    for template in list(wikitext.wikitext.filter_templates()):
-        name = str(template.name).strip()
-        if not _CITE_RE.match(name):
+    """Rewrite every ``Cite*`` template that has anonymous parameters."""
+    for template in wikitext.templates():
+        if not _CITE_RE.match(str(template.name).strip()):
             continue
         if not _needs_escape(template):
             continue
 
-        # Rebuild the template wikitext
-        parts = ["{{", str(template.name).strip()]
-        first = True
-        for param in template.params:
-            value = str(param.value)
-            if param.showkey:
-                parts.append(f"|{param.name}={value}")
-            else:
-                # First unnamed param: | is the template name separator, keep it
-                # Subsequent unnamed params: use {{!}}
-                if first:
-                    parts.append(f"|{value}")
-                    first = False
-                else:
-                    parts.append(f"{{{{!}}}}{value}")
-        parts.append("}}")
-
-        new_str = "".join(parts)
-        if new_str != str(template):
-            wikitext.wikitext.replace(template, new_str)
+        new_text = _rebuild(template)
+        if new_text != str(template):
+            wikitext.wikitext.replace(template, new_text)
 
 
 @intro

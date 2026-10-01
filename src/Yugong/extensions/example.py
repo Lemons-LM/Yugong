@@ -1,24 +1,48 @@
+"""Starting point for a new extension.
+
+To write your own:
+
+1. Copy this file into the same directory under a name that describes the
+   template it deals with, e.g. ``fix_infobox.py``.  Keep the ``.py`` suffix —
+   every ``*.py`` file in ``extensions/`` is imported automatically.
+2. Rename ``template_example_job`` to ``<your_name>_job`` and implement the
+   transformation inside it.
+3. Rename ``template_example_intro`` to ``<your_name>_intro`` and return a
+   one-line description of what the job changes; it is shown to the user before
+   anything is edited.
+4. Test offline with ``python main.py --dev input.wikitext output.wikitext``.
+
+A job receives the page as a :class:`~src.Yugong.core.wikitext.Wikitext` and
+mutates it in place.  Its return value is ignored.  Use ``@job(needs_wiki=True)``
+if the job has to talk to the wiki; offline dev mode then skips it.
+
+A minimal implementation would look like this::
+
+    @job
+    def template_example_job(wikitext: Wikitext) -> None:
+        for template in wikitext.templates():
+            if "infobox" not in str(template.name).lower():
+                continue
+            for param in template.params:
+                if str(param.name).strip() == "old_param":
+                    param.name = "new_param"
+
+It is intentionally left as a no-op here: this file is loaded by default, so it
+must never modify a page.
+"""
+
+from __future__ import annotations
+
 from src.Yugong.core.wikitext import Wikitext
-from src.Yugong.utilities.mark_job_intro import job, intro
+from src.Yugong.utilities.mark_job_intro import intro, job
+
 
 @job
-def template_example_job(wikitext: Wikitext) -> Wikitext:
-    """
-    If you want to write an Extension, Follow:
-    1. Copy the entire page, and paste in the same directory with a different name. Better to follow "template_name.py" format, but don't change the ".py" part, like "template_example"
-    2. change "template_example_job" to a name which explains what you are writing about. Better to just be the filename with "_job" without ".py". like "template_example_job".
-    3. Define parameters, which is the things before '=' which starts after the line _job: `TemplateTask = TemplateTask(` and before `)` and then `_job.test()`
-    4. Clear the words you see here between three ", and write a detailed explanation to what you are writing.
-    5. Leave unmentioned part away, and go to lines after @intro, follow intros there
+def template_example_job(wikitext: Wikitext) -> None:
+    """Do nothing — this is the copy-me template, not a real transformation."""
+    return None
 
-    """
-    pass
 
 @intro
 def template_example_intro() -> str:
-    """
-    1. Change "template_example_job" to a name which explains what you are writing about. Better to just be the filename with "_intro" without ".py". like "template_example_intro".
-    2. Edit the words between ' after "return", make it a very brief introduction to what this extension will do
-    3. Save and Exit. Thank you for your work.
-    """
-    return 'TemplateTask: Formatting template "foo"'
+    return "Example: does nothing (copy this file to add your own extension)"

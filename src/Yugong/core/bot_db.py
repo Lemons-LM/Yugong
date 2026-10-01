@@ -1,11 +1,16 @@
 """
-Template info cache database — prevents repeated API requests. Not yet wired up.
+SQLite cache used by extensions to avoid repeating wiki API requests.
+
+The database file lives in ``data/db/db.sqlite3`` and is opened lazily: importing
+this module must not create files as a side effect.  Use :func:`get_bot_db` (or
+the module-level ``bot_db`` proxy, which forwards to it) to obtain the instance.
 """
 
 import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from src.Yugong.core.logger import BotLogger
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
@@ -64,7 +69,7 @@ class BotDB:
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
-    def _init_database(self):
+    def _init_database(self) -> None:
         """Create all tables if they don't exist."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -106,7 +111,7 @@ class BotDB:
             conn.commit()
             self.logger.info("Database initialized")
 
-    def insert(self, table: str, data: dict[str, any]) -> bool:
+    def insert(self, table: str, data: dict[str, Any]) -> bool:
         """
         Insert data into the specified table.
 
@@ -132,7 +137,7 @@ class BotDB:
             self.logger.error(f"Insert failed: {e}")
             return False
 
-    def update(self, table: str, data: dict[str, any], conditions: dict[str, any]) -> bool:
+    def update(self, table: str, data: dict[str, Any], conditions: dict[str, Any]) -> bool:
         """
         Update data in the specified table.
 
@@ -166,7 +171,7 @@ class BotDB:
             self.logger.error(f"Update failed: {e}")
             return False
 
-    def delete(self, table: str, conditions: dict[str, any]) -> bool:
+    def delete(self, table: str, conditions: dict[str, Any]) -> bool:
         """
         Delete data from the specified table.
 
@@ -196,8 +201,8 @@ class BotDB:
             self.logger.error(f"Delete failed: {e}")
             return False
 
-    def search(self, table: str, conditions: dict[str, any] | None = None,
-               columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, any]]:
+    def search(self, table: str, conditions: dict[str, Any] | None = None,
+               columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, Any]]:
         """
         Search the specified table (exact match).
 
@@ -237,7 +242,7 @@ class BotDB:
             return []
 
     def search_like(self, table: str, conditions: dict[str, str] | None = None,
-                    columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, any]]:
+                    columns: list[str] | None = None, limit: int | None = None) -> list[dict[str, Any]]:
         """
         Fuzzy search the specified table (LIKE match).
 
@@ -277,9 +282,9 @@ class BotDB:
             return []
 
     def search_query(self, table: str, where_clause: str = "",
-                     values: list[any] | None = None,
+                     values: list[Any] | None = None,
                      columns: list[str] | None = None,
-                     limit: int | None = None) -> list[dict[str, any]]:
+                     limit: int | None = None) -> list[dict[str, Any]]:
         """
         Generic query with custom WHERE clause (supports <, >, LIKE, etc.).
 
@@ -320,7 +325,7 @@ class BotDB:
             self.logger.error(f"Query failed: {e}")
             return []
 
-    def execute_transaction(self, operations: list[tuple[str, list[any]]]) -> bool:
+    def execute_transaction(self, operations: list[tuple[str, list[Any]]]) -> bool:
         """
         Execute a transaction (multiple SQL operations).
 
@@ -343,7 +348,7 @@ class BotDB:
             return False
 
     @staticmethod
-    def _serialize_value(value: any) -> any:
+    def _serialize_value(value: Any) -> Any:
         """
         Serialize value to storage format (list/dict → JSON string, datetime → ISO 8601).
 
@@ -360,28 +365,26 @@ class BotDB:
         return value
 
     @staticmethod
-    def _deserialize_row(row: dict[str, any]) -> dict[str, any]:
+    def _deserialize_row(row: dict[str, Any]) -> dict[str, Any]:
         """
-        Deserialize row data (JSON string back to list/dict).
+        Decode columns that :meth:`_serialize_value` stored as JSON containers.
 
-        Args:
-            row: Database row data dict
-
-        Returns:
-            Deserialized row data
+        Only strings starting with ``[`` or ``{`` are decoded.  Decoding every
+        string would silently turn a stored page title like ``"2024"`` into the
+        integer ``2024``.
         """
         deserialized = {}
         for key, value in row.items():
-            if isinstance(value, str):
+            if isinstance(value, str) and value[:1] in "[{":
                 try:
                     deserialized[key] = json.loads(value)
-                except (json.JSONDecodeError, TypeError):
+                except json.JSONDecodeError:
                     deserialized[key] = value
             else:
                 deserialized[key] = value
         return deserialized
 
-    def execute_raw(self, sql: str, params: list[any] | None = None) -> list[dict[str, any]]:
+    def execute_raw(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
         """
         Execute raw SQL query and return results.
 
@@ -404,4 +407,26 @@ class BotDB:
             return []
 
 
-bot_db = BotDB()
+_bot_db: BotDB | None = None
+
+
+def get_bot_db() -> BotDB:
+    """Return the process-wide :class:`BotDB`, creating the file on first use."""
+    global _bot_db
+    if _bot_db is None:
+        _bot_db = BotDB()
+    return _bot_db
+
+
+class _BotDBProxy:
+    """Lazy stand-in for the module-level ``bot_db`` singleton.
+
+    Extension code keeps using ``bot_db.search(...)`` unchanged, but nothing
+    touches the filesystem until the first real call.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_bot_db(), name)
+
+
+bot_db: Any = _BotDBProxy()

@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Automated wiki editing tool for batch processing"
 requires-python = ">=3.10"
 
-# 核心运行时依赖
 dependencies = [
     "requests==2.33.1",
     "toml==0.10.2",
@@ -19,19 +18,45 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# 开发工具依赖
 dev = [
     "mypy==1.19.1",
     "mypy_extensions==1.1.0",
-    "types-requests", # 建议添加，用于 mypy 类型检查
+    "types-requests",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# The code imports ``src.Yugong...`` from the repository root, so the packages are
+# declared explicitly instead of being discovered under src/ — discovery would
+# install them as a top-level ``Yugong`` package and break every import.
+[tool.setuptools]
+package-dir = { "" = "." }
+packages = [
+    "src",
+    "src.Yugong",
+    "src.Yugong.core",
+    "src.Yugong.processor",
+    "src.Yugong.utilities",
+    "src.Yugong.extensions",
+]
 
-# 可选：如果你使用 mypy，可以在此处添加基本配置
 [tool.mypy]
 python_version = "3.10"
+files = ["src", "tests", "main.py"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+# These dependencies ship no type information at all.  They are reached through
+# our own typed wrappers, so stub packages would add dependencies for no benefit;
+# ``follow_untyped_imports`` treats them as untyped instead of reporting them.
+[[tool.mypy.overrides]]
+module = [
+    "toml",
+    "toml.*",
+    "pywikibot",
+    "pywikibot.*",
+    "pyperclip",
+    "opencc",
+    "opencc.*",
+]
+ignore_missing_imports = true
+follow_untyped_imports = true

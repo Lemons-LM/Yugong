@@ -1,49 +1,48 @@
-import importlib
+"""Load extensions and rules, show the user what is about to run, ask to confirm."""
 
-from src.Yugong.core.logger import logger
+from __future__ import annotations
+
+from src.Yugong.core.logger import configure_logging, logger
 from src.Yugong.core.settings import settings
 from src.Yugong.core.template_formatter import formatter
+from src.Yugong.utilities.extensions import load_extensions
 from src.Yugong.utilities.mark_job_intro import INTROS
-from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
 def confirm_settings(all_confirmed: bool = False) -> None:
-    # ── Always load extensions and template rules ─────────────────
+    """Load everything, print a summary, and prompt unless in robot mode.
 
-    steps_path = PROJECT_ROOT / 'src' / 'Yugong' / "extensions"
-    for f in steps_path.glob("*.py"):
-        if f.name != "__init__.py":
-            module_name = f"src.Yugong.extensions.{f.stem}"
-            importlib.import_module(module_name)
+    Args:
+        all_confirmed: Skip the interactive prompts entirely.
+    """
+    configure_logging(
+        log_level=settings.log_level,
+        log_timestamps=settings.log_timestamp,
+    )
 
-    intro_strs: str = "The following extensions are loaded:\n"
-    for f in INTROS:
-        intro_str: str = f()
-        intro_strs += f"{intro_str}\n"
+    loaded = load_extensions()
+
+    intro_strs = "The following extensions are loaded:\n"
+    if loaded:
+        intro_strs += "".join(f"{intro()}\n" for intro in INTROS)
+    else:
+        intro_strs += "(no extensions found)\n"
 
     print("The following Template TOML rules are loaded:\n")
     formatter.get_ruleset()
 
-    # ── Build settings summary ────────────────────────────────────
+    setting_str = settings.describe()
 
-    setting_list_str = []
-    for attr_name in dir(settings):
-        if not attr_name.startswith('_') and not callable(getattr(settings, attr_name)):
-            attr_value = getattr(settings, attr_name)
-            setting_list_str.append(f"{attr_name} is set to {attr_value}")
-    setting_str = "\n".join(setting_list_str)
-
-    # ── Always log for audit trail ─────────────────────────────────
-
+    # Audit trail, kept even in robot mode.
     logger.info(f"Settings:\n{setting_str}")
     logger.info(f"Extensions loaded:\n{intro_strs}")
 
-    # ── Skip interactive prompts in robot mode ─────────────────────
+    # Fail loudly before anything is touched.  ``do_jobs`` validates again, which
+    # is harmless and keeps the processing loop safe when called on its own.
+    settings.validate()
 
-    if all_confirmed or getattr(settings, 'bypass_confirm_settings', False):
+    if all_confirmed or settings.bypass_confirm_settings:
         return
-
-    # ── Interactive confirmation prompts (manual mode only) ────────
 
     if_know_to_use = input(
         "YuGong is a tool to help you to do some jobs on specific wiki.\n"
@@ -57,7 +56,7 @@ def confirm_settings(all_confirmed: bool = False) -> None:
     ).lower()
     if if_know_to_use not in ["y", "yes"]:
         print("Goodbye")
-        exit(0)
+        raise SystemExit(0)
 
     if_confirmed_job = input(
         f"The following settings are confirmed:\n{setting_str}\n"
@@ -65,15 +64,15 @@ def confirm_settings(all_confirmed: bool = False) -> None:
     ).lower()
     if if_confirmed_job not in ["y", "yes"]:
         print("Please check again the settings.toml")
-        exit(0)
+        raise SystemExit(0)
 
     if_confirmed_extensions = input(
         f"{intro_strs}\nDo you want to continue? (y/[n]): "
     ).lower()
     if if_confirmed_extensions not in ["y", "yes"]:
         print("Please check again the settings.toml")
-        exit(0)
+        raise SystemExit(0)
 
     if input("Do you want to continue? (y/[n]): ").lower() not in ["y", "yes"]:
         print("Please check again the rulesets")
-        exit(0)
+        raise SystemExit(0)

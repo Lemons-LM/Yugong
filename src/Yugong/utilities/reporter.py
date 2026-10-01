@@ -1,28 +1,48 @@
-from src.Yugong.core.mailer import mailer
+"""Collects the non-fatal problems a run runs into and reports them at the end.
+
+Skipped pages (diff too large, disallowed tags, failed save, ...) are recorded
+here instead of being swallowed, so an unattended run leaves an audit trail.
+"""
+
+from __future__ import annotations
+
 from collections import defaultdict
+
+from src.Yugong.core.mailer import mailer
 
 
 class Reporter:
-    def __init__(self):
-        self.issues = defaultdict(list)
+    """A per-module list of issues plus the ways to surface them."""
 
-    def add(self, module: str, issue: str):
+    def __init__(self) -> None:
+        self.issues: dict[str, list[str]] = defaultdict(list)
+
+    def add(self, module: str, issue: str) -> None:
+        """Record one issue under *module*."""
         self.issues[module].append(issue)
 
-    def report(self):
-        if self.issues:
-            subject = "Yugong Report"
-            body = "Yugong Report\n\n"
-            for module, issues in self.issues.items():
-                body += f"{module}:\n"
-                for issue in issues:
-                    body += f"- {issue}\n"
-            mailer.email(subject, body)
+    def is_empty(self) -> bool:
+        return not self.issues
 
-    def print(self):
+    def body(self) -> str:
+        """Render every collected issue as a plain-text report."""
+        lines = ["Yugong Report", ""]
         for module, issues in self.issues.items():
-            print(f"{module}:")
-            for issue in issues:
-                print(f"- {issue}")
+            lines.append(f"{module}:")
+            lines.extend(f"- {issue}" for issue in issues)
+        return "\n".join(lines)
+
+    def report(self) -> None:
+        """E-mail the collected issues, if any."""
+        if self.is_empty():
+            return
+        mailer.email("Yugong Report", self.body())
+
+    def print_report(self) -> None:
+        """Print the collected issues, if any."""
+        if self.is_empty():
+            return
+        print(self.body())
+
 
 reporter: Reporter = Reporter()

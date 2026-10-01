@@ -1,3 +1,11 @@
+"""SMTP alerts (bot suppressed, duplicate run, end-of-run report).
+
+Email is entirely optional: without ``MAIL_ACCOUNT``/``MAIL_PASSWORD`` in the
+environment the mailer turns itself off and every call becomes a log line.
+"""
+
+from __future__ import annotations
+
 import os
 import smtplib
 import traceback
@@ -7,59 +15,57 @@ from email.mime.text import MIMEText
 from src.Yugong.core.logger import BotLogger
 from src.Yugong.core.settings import settings
 
+SMTP_SERVER: str = "smtp.office365.com"
+SMTP_PORT: int = 587
+
 
 class Mailer:
-    """
-    Email sending module.
-    """
+    """Send plain-text alert emails through SMTP."""
 
-    def __init__(self):
-        self.mail_account = os.environ.get("MAIL_ACCOUNT")
-        self.mail_password = os.environ.get("MAIL_PASSWORD")
+    def __init__(self) -> None:
+        self.mail_account: str | None = os.environ.get("MAIL_ACCOUNT")
+        self.mail_password: str | None = os.environ.get("MAIL_PASSWORD")
         self.logger = BotLogger("mailer")
-        self.status = True
+        self.status: bool = True
 
         if not self.mail_account or not self.mail_password:
-            self.logger.info("Warning: MAIL_ACCOUNT or MAIL_PASSWORD not configured, skipping email")
+            self.logger.info(
+                "MAIL_ACCOUNT or MAIL_PASSWORD not configured, skipping email"
+            )
             self.status = False
-            return
+
+    def recipients(self) -> list[str]:
+        """Configured recipients, always a list."""
+        configured = getattr(settings, "mail_recipients", None) or []
+        return [str(address) for address in configured]
 
     def email(self, subject: str, content: str) -> None:
-        """
-        Send email via SMTP.
-
-        Args:
-            subject: Email subject
-            content: Email body
-        """
-
-        if not self.status:
-            self.logger.info("MAIL_ACCOUNT or MAIL_PASSWORD not configured, skipping email")
+        """Send *content* to every configured recipient. Never raises."""
+        if not self.status or not self.mail_account or not self.mail_password:
+            self.logger.info(f"Email disabled, not sending: {subject}")
             return
-        self.logger.info("Sending email...")
-        smtp_server = "smtp.office365.com"
-        smtp_port = 587
 
-        # Recipients from settings, with env-var override
-        recipients = getattr(settings, 'mail_recipients', []) or []
+        recipients = self.recipients()
+        if not recipients:
+            self.logger.info(f"No mail_recipients configured, not sending: {subject}")
+            return
 
-        msg = MIMEText(content, 'plain', 'utf-8')
-        msg['From'] = self.mail_account
-        msg['To'] = ", ".join(recipients)
-        msg['Subject'] = Header(subject, 'utf-8').encode()
+        msg = MIMEText(content, "plain", "utf-8")
+        msg["From"] = self.mail_account
+        msg["To"] = ", ".join(recipients)
+        msg["Subject"] = Header(subject, "utf-8").encode()
 
         try:
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(self.mail_account, self.mail_password)
-            server.sendmail(self.mail_account, recipients, msg.as_string())
-            server.quit()
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(self.mail_account, self.mail_password)
+                server.sendmail(self.mail_account, recipients, msg.as_string())
             self.logger.info(f"Email sent to: {recipients}")
-        except Exception as e:
-            self.logger.info(f"Failed to send email: {e}")
-            self.logger.error(f"Failed to send email: {e}")
+        except Exception as exc:  # noqa: BLE001 - alerts must never break a run
+            self.logger.error(f"Failed to send email: {exc}")
             traceback.print_exc()
+
 
 mailer = Mailer()

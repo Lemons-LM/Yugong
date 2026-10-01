@@ -1,55 +1,46 @@
+"""Domain matching for ``apply_websites`` in template rules."""
+
+from __future__ import annotations
+
+from urllib.parse import urlparse
+
 from src.Yugong.core.settings import settings
 
 
-def check_same_website(url: str) -> bool:
-    from urllib.parse import urlparse
+def normalize_domain(domain: str) -> str:
+    """Lower-case a host, dropping a ``www.`` prefix and any port."""
+    if not domain:
+        return ""
+    domain = domain.lower().split(":")[0]
+    if domain.startswith("www."):
+        return domain[4:]
+    return domain
 
-    def normalize_domain(domain: str) -> str:
-        """Remove www prefix and lowercase the domain."""
-        if not domain:
-            return ""
-        domain = domain.lower()
-        # Remove port number if present (e.g., example.com:8080 -> example.com)
-        if ':' in domain:
-            domain = domain.split(':')[0]
-        if domain.startswith("www."):
-            return domain[4:]
-        return domain
 
-    def extract_domain(address: str) -> str:
-        """Extract the netloc (domain) from a URL or address string."""
-        if not address:
-            return ""
-        
-        parsed = urlparse(address)
-        netloc = parsed.netloc
-        
-        # If netloc is empty, it might be because the scheme was missing 
-        # and urlparse treated the whole thing as a path, or it's just a raw domain.
-        if not netloc:
-            # Try adding a scheme to see if it parses correctly
-            if not address.startswith(("http://", "https://")):
-                temp_parsed = urlparse(f"https://{address}")
-                netloc = temp_parsed.netloc
-        
-        return netloc
+def extract_domain(address: str) -> str:
+    """Return the host part of a URL or bare domain."""
+    if not address:
+        return ""
+    netloc = urlparse(address).netloc
+    if not netloc and not address.startswith(("http://", "https://")):
+        netloc = urlparse(f"https://{address}").netloc
+    return netloc
+
+
+def check_same_website(url: str, *, api_endpoint: str | None = None) -> bool:
+    """Return ``True`` if *url* points at the same host as the configured wiki."""
+    if api_endpoint is None:
+        api_endpoint = str(getattr(settings, "api_endpoint", ""))
 
     try:
-        # Extract and normalize domain from the input URL
-        url_domain_raw = extract_domain(url)
-        normalized_url_domain = normalize_domain(url_domain_raw)
-        
-        if not normalized_url_domain:
+        url_domain = normalize_domain(extract_domain(url))
+        if not url_domain:
             return False
 
-        # Extract and normalize domain from the API endpoint setting
-        api_endpoint = settings.api_endpoint
-        api_domain_raw = extract_domain(api_endpoint)
-        normalized_api_domain = normalize_domain(api_domain_raw)
-        
-        if not normalized_api_domain:
+        api_domain = normalize_domain(extract_domain(api_endpoint))
+        if not api_domain:
             return False
 
-        return normalized_url_domain == normalized_api_domain
-    except Exception:
+        return url_domain == api_domain
+    except Exception:  # noqa: BLE001 - a malformed rule URL must not crash the run
         return False

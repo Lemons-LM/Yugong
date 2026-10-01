@@ -1,66 +1,85 @@
-"""
-Remove templates that redirect to Template:Void.
+"""Remove templates that redirect to ``Template:Void``.
 
-Checks the bot_db template cache first to avoid repeated API requests.
-If a template's redirect target is not yet known, queries the wiki via pywikibot
-and records the result in the database.
+Some maintenance templates are retired by redirecting them to ``Template:Void``,
+which renders nothing; pages should stop transcluding them.
+
+Every template is looked up at most once: the resolved redirect target is cached
+in the ``template`` table of :mod:`src.Yugong.core.bot_db`.  Real failures (a
+network problem, a broken site connection) propagate instead of being reported
+as "not a Void template", so a broken run cannot silently skip work.
 """
+
+from __future__ import annotations
 
 import pywikibot
 
 from src.Yugong.core.bot_db import bot_db
 from src.Yugong.core.wiki import wiki
 from src.Yugong.core.wikitext import Wikitext
-from src.Yugong.utilities.mark_job_intro import job, intro
+from src.Yugong.utilities.mark_job_intro import intro, job
 
-#TODO: Void should be target instead of type
-_VOID_TARGETS = frozenset({"Template:Void", "Template:void", "Template:Void"})
+#: Normalised redirect target that means "this template renders nothing".
+VOID_TARGET: str = "void"
+
+#: bot_db table holding template redirect information.
+TEMPLATE_TABLE: str = "template"
+
+
+def _normalize_title(title: str) -> str:
+    """Lower-case, strip whitespace and drop a template namespace prefix."""
+    normalized = title.strip().lower().replace("_", " ")
+    for prefix in ("template:", "模板:"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    return normalized.strip()
+
+
+def _is_void_target(title: str) -> bool:
+    """Return ``True`` if *title* is some spelling of ``Template:Void``."""
+    return _normalize_title(title) == VOID_TARGET
+
+
+def _resolve_redirect_target(name: str) -> str | None:
+    """Return the redirect target of ``Template:<name>``, or ``None``."""
+    template_page = pywikibot.Page(wiki.site, f"Template:{name}")
+    try:
+        if not template_page.isRedirectPage():
+            return None
+        return str(template_page.getRedirectTarget().title())
+    except pywikibot.exceptions.NoPageError:
+        # The template does not exist, so it cannot be a Void redirect.
+        return None
 
 
 def _is_void_template(name: str) -> bool:
-    """Check whether *name* redirects to Template:Void.  Caches result in bot_db."""
+    """Return ``True`` if ``Template:<name>`` redirects to ``Template:Void``.
 
-    # 1. Check database cache
-    cached = bot_db.search("template", {"title": name, "type": "void"})
+    The answer is cached in bot_db, so each template is queried once per machine.
+    """
+    cached = bot_db.search(TEMPLATE_TABLE, {"title": name})
     if cached:
-        return True
+        return str(cached[0].get("type")) == "void"
 
-    # Also check if we already know it's NOT a void template
-    cached_any = bot_db.search("template", {"title": name})
-    if cached_any:
-        return False
+    target = _resolve_redirect_target(name)
+    is_void = target is not None and _is_void_target(target)
 
-    # 2. Query wiki for redirect target
-    try:
-        template_page = pywikibot.Page(wiki.site, f"Template:{name}")
-        if template_page.isRedirectPage():
-            target = template_page.getRedirectTarget()
-            target_title = target.title()
-            is_void = target_title in _VOID_TARGETS
-        else:
-            is_void = False
-    except Exception:
-        # If the template page doesn't exist or query fails, assume not void
-        is_void = False
-
-    # 3. Cache result
-    bot_db.insert("template", {
+    bot_db.insert(TEMPLATE_TABLE, {
         "title": name,
-        "target": f"Template:{name}",
+        "target": target or f"Template:{name}",
         "type": "void" if is_void else "normal",
     })
-
     return is_void
 
 
-@job
+@job(needs_wiki=True)
 def rm_void_template_job(wikitext: Wikitext) -> None:
-    """Remove every template on the page that redirects to Template:Void."""
-    for template in list(wikitext.wikitext.filter_templates()):
-        raw_name = str(template.name).strip()
-        # Normalize: remove leading whitespace/newlines and capitalize
-        clean_name = raw_name.strip().replace("_", " ")
-        if clean_name and _is_void_template(clean_name):
+    """Remove every template on the page that redirects to ``Template:Void``."""
+    for template in wikitext.templates():
+        name = str(template.name).strip().replace("_", " ")
+        if not name:
+            continue
+        if _is_void_template(name):
             wikitext.wikitext.remove(template)
 
 

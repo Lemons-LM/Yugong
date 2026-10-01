@@ -1,48 +1,42 @@
-"""
-Remove undefined named <ref> tags.
+"""Remove undefined named ``<ref>`` tags.
 
-When a page uses ``<ref name="foo" />`` (self-closing) to reference a full
-citation defined elsewhere, but no ``<ref name="foo">...</ref>`` with actual
-content exists on the page, the self-closing tag is broken — it produces a
-citation error.  This extension removes those orphaned references.
-
-Uses mwparserfromhell for tag parsing to preserve wikitext fidelity.
+A page may write ``<ref name="foo" />`` to reuse a citation defined elsewhere on
+the *same* page.  When no ``<ref name="foo">...</ref>`` with actual content
+exists, that self-closing tag renders as a citation error, so it is removed.
 """
+
+from __future__ import annotations
+
+import mwparserfromhell as mph
 
 from src.Yugong.core.wikitext import Wikitext
-from src.Yugong.utilities.mark_job_intro import job, intro
+from src.Yugong.utilities.mark_job_intro import intro, job
 
 
-def _get_ref_name(tag) -> str | None:
-    """Extract the ``name`` attribute from an mwparserfromhell Tag, if any."""
+def _get_ref_name(tag: mph.wikicode.Tag) -> str | None:
+    """Return the ``name`` attribute of a ``<ref>`` tag, or ``None``."""
     if not tag.has("name"):
         return None
-    attr = tag.get("name")
-    if attr is None:
+    attribute = tag.get("name")
+    if attribute is None:
         return None
-    return str(attr.value).strip().strip('"')
+    return str(attribute.value).strip().strip('"')
 
 
-def _ref_has_content(tag) -> bool:
-    """Return True if the <ref> tag has non-empty contents."""
+def _ref_has_content(tag: mph.wikicode.Tag) -> bool:
+    """Return ``True`` if the ``<ref>`` tag carries a non-empty body."""
     if tag.self_closing:
         return False
-    content = str(tag.contents).strip()
-    return len(content) > 0
+    return len(str(tag.contents).strip()) > 0
 
 
 @job
 def rm_undefined_refs_job(wikitext: Wikitext) -> None:
-    """
-    Find <ref name="..."> tags with no content that have no corresponding
-    full definition elsewhere on the page, and remove them.
-    """
-
-    # First pass: collect names that DO have a content definition
+    """Drop self-closing named refs whose name is never defined on the page."""
     defined_names: set[str] = set()
-    all_named_refs: list = []
+    named_refs: list[tuple[mph.wikicode.Tag, str]] = []
 
-    for tag in wikitext.wikitext.filter_tags():
+    for tag in wikitext.tags():
         if str(tag.tag).strip().lower() != "ref":
             continue
 
@@ -50,20 +44,14 @@ def rm_undefined_refs_job(wikitext: Wikitext) -> None:
         if name is None:
             continue
 
-        all_named_refs.append((tag, name))
-
+        named_refs.append((tag, name))
         if _ref_has_content(tag):
             defined_names.add(name)
 
-    # Second pass: remove self-closing refs whose name has no full definition
-    removed = 0
-    for tag, name in all_named_refs:
-        if not _ref_has_content(tag) and name not in defined_names:
-            try:
-                wikitext.wikitext.remove(tag)
-                removed += 1
-            except Exception:
-                pass
+    for tag, name in named_refs:
+        if name not in defined_names and not _ref_has_content(tag):
+            # Let a failure propagate: a broken removal means a broken extension.
+            wikitext.wikitext.remove(tag)
 
 
 @intro

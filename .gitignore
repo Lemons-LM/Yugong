@@ -208,3 +208,11 @@ __marimo__/
 # Project files
 logs/
 cache/
+
+# YuGong local state
+.venv/
+data/
+.DS_Store
+
+# pywikibot state
+throttle.ctrl

@@ -1,12 +1,21 @@
+"""Resolve the project root once, from any module depth."""
+
+from __future__ import annotations
+
 from pathlib import Path
+
+MARKER_FILES: tuple[str, ...] = ("pyproject.toml", "settings.toml", ".git")
 
 
 def find_project_root() -> Path:
-    marker_files: list = ["pyproject.toml", "settings.toml", ".git"]
+    """Walk up from this file until a marker file is found."""
     current = Path(__file__).resolve()
-    for parent in [current, *current.parents]:
-        if any((parent / marker).exists() for marker in marker_files):
+    for parent in current.parents:
+        if any((parent / marker).exists() for marker in MARKER_FILES):
             return parent
-    raise FileNotFoundError("Project root not found")
+    raise FileNotFoundError(
+        f"Project root not found: none of {MARKER_FILES} exist above {current}"
+    )
+
 
 PROJECT_ROOT: Path = find_project_root()
