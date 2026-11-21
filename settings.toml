@@ -53,6 +53,37 @@ overwrite_para_name = true
 # script-level conversion.  Categories are handled separately by
 # category_handler.  Requires the NoteTA groups to be readable by the bot.
 enable_cangjie = false
+# ISBN normaliser: hyphenate ISBN-10/13 in {{ISBN}}/{{ISBNT}}/citation
+# templates with the International ISBN Agency range data, and clean up
+# Special:BookSources links.  Off by default; enable it deliberately.
+enable_isbn_normalise = false
+# Template convention.  The two wikis interpret {{ISBN}} differently:
+#   "qiuwen"  — {{ISBN|isbn1|isbn2|…|isbn9}}; parameters 1–9 are all ISBNs,
+#               with plainlink=/leadout=/invalid1..9= as named options.
+#   "moegirl" — {{ISBN|isbn|display text}}; parameter 2 is a display label.
+# Qiuwen is the default because this repository targets Qiuwen.
+isbn_template_style = "qiuwen"
+# Convert valid ISBN-10 values to ISBN-13 while normalising.
+isbn_convert_10_to_13 = false
+# Only used by the "moegirl" style: when parameters 1 and 2 are the same ISBN,
+# collapse {{ISBN|isbn|isbn}} to {{ISBNT|isbn}}.
+isbn_rehyphenate_equal_label = false
+# Template names (without "Template:") handled by the ISBN job.  Empty means
+# the defaults for the selected style:
+#   qiuwen  -> ISBN, ISBNT, Cite book, Citation
+#   moegirl -> ISBN, ISBNT, Cite book
+isbn_template_names = []
+# Path to RangeMessage.xml relative to the project root; empty uses the bundled
+# src/Yugong/resources/RangeMessage.xml.
+isbn_range_message_path = ""
+# Invisible Unicode cleanup: remove zero-width/format/control characters from
+# text, template names/parameters, links and tag attributes.  nowiki/code/math
+# contents and HTML comments are skipped.  Off by default.
+enable_invisible_chars_fix = false
+# Also remove characters that are meaningful in some scripts: ZWNJ/ZWJ
+# (emoji/Indic/Persian), bidi marks/controls and the Arabic letter mark.
+# Leave false unless you know the wiki does not use them.
+invisible_chars_aggressive = false
 # true = refuse to run twice on the same UTC day (for cron/robot deployments).
 enable_heartbeat = false
 # Every edit is tagged with this comment, so it must identify the bot.

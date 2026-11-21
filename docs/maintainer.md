@@ -74,6 +74,7 @@ src/Yugong/
     ├── example.py          # deliberate no-op, copy this to start a new extension
     ├── fix_cite_template.py
     ├── lint_fixes.py       # obsolete tags/attrs, self-closing, headings, image sizes
+    ├── nowrap_fixes.py     # navbox .w/!w/-w rows -> unordered lists
     ├── rm_undefined_refs.py
     └── rm_void_template.py # Void alias preload + redirect chains (needs_wiki)
 ```
@@ -184,9 +185,10 @@ The `Wiki` class wraps pywikibot with several key behaviors:
 - **NoteTA / CGroup category conversion**: `category_handler` parses the page's `{{NoteTA}}` (inline rules, `T=` title rules, `G1`..`G30` groups) and, for each group, loads `Module:CGroup/<name>` first and `Template:CGroup/<name>` second, exactly like `Module:NoteTA`. `note_ta.py` parses the wiki's Lua/template data (including `import` and `require` wrappers); `cgroup_cache.py` stores the result in the per-wiki `cgroup` table for 7 days. Rules are applied to category names for the `zh-cn` target, with `zh-hans`/`zh` fallback, and the link is rewritten only when the converted `Category:` page exists; otherwise the original name (and its `{{分类重定向}}`) is kept. No term list is built into the code.
 - **Cangjie** (`extensions/cangjie.py`, `enable_cangjie = true`): applies the same NoteTA/CGroup rules to visible article text, then OpenCC `t2s` (now a declared dependency). `note_ta.apply_replacements()` is a **single longest-match pass** with target terms pre-empting shorter sources, so a rule such as `胞器 => 细胞器` cannot turn an existing `细胞器` into `细细胞器`. The walker skips template names/parameters, category/file links, `-{...}-`, URLs, comments and `nowiki`/`code`/`pre`/`math`-style tags. Pages without NoteTA still get the OpenCC script-level conversion; there are simply no page-specific terminology rules. The normal diff-size check still applies.
 - **Lint fixes** (`extensions/lint_fixes.py`): safe, idempotent transformations for the QW:TODO obsolete-syntax list and common Linter categories. It converts `<font>` (color/face only), `<center>` (to `{{center}}` when simple, otherwise `<div>`), `<big>`, `<tt>`, `<strike>`; folds `align`/`valign`/`width`/`height`/`bgcolor`/`border` into `style` on HTML tags and wikitable cells; pairs self-closing non-void tags; removes empty headings and duplicate bare image sizes; and removes only empty category sort keys. It walks template **argument values** (so a template page's own `<font>` inside `{{Infobox|...}}` is fixed) but never template/parameter names, and skips `nowiki`/`code`/`pre`-style contents plus the risky categories listed in the module docstring.
+- **Nowrap fixes** (`extensions/nowrap_fixes.py`): navbox `list`/`group`/`above`/`below` values that use `.w`/`!w`/`-w` become unordered lists with the required newline after `=`. Existing `nowrap begin/end` pairs, items containing newlines or top-level pipes, and non-navbox uses are left unchanged; remaining separators are reported for manual review. This is an extension rather than a TOML `.w` → `{{·}}` rule because the correct output depends on the surrounding navbox parameter and line breaks.
 - **Category policy** (`extensions/category_policy.py`): applies the automatable parts of `QW:CAT` — canonical `Category:` prefix, one link per category, redundant sort-key removal, and `{{catnav|auto=1}}` on category pages that lack it. Reading `Category:` page content needs the bot account's read permission; the current test token gets `accessdenied` there.
 - **Void redirects** (`extensions/rm_void_template.py`): preloads every redirect to `Template:Void` (1,300+ titles) into the per-wiki `template` table once a week, follows redirect chains up to 5 levels, and removes the no-op templates without per-template API requests.
-- **Shipped template rules**: `template_rules/deprecated_city.toml` and `template_rules/deprecated_country_infobox.toml` are generated from the wiki's own deprecated wrapper templates (`Template:城市`, `Template:國家基礎資訊`) and replace invocations with the exact `{{Infobox settlement}}` / `{{Infobox country}}` mapping. The country replacement is large (about 6.5k chars), so a run that uses it needs `max_acceptable_diff_size` above the default 1000.
+- **Reviewed deprecated-template rules**: `template_rules/` contains per-family rules reviewed one template at a time. The `Internal link helper` family (base + 92 language subpages + 90 `Link-*` + `Ilh`) becomes a plain `[[{{{1|}}}]]` link; `Translink`/`Tsl` map params 3/2/4 to an internal link; `Interlanguage link multi` is renamed to `多語言連結`; `城市`/`國家基礎資訊` are exact wrapper expansions; `Double image` uses a reviewed `Multiple image` body; `Short description` is deleted; `Font color` becomes `Color`; and several direct-link country templates are replaced. The `.w`/`!w`/`-w` series is handled by `nowrap_fixes` (navbox list rows → unordered lists). The rationale and the manual list are in `docs/deprecated-template-review.md`. Nothing is blind-renamed. The country replacement is large (about 6.5k chars), so a run that uses it needs `max_acceptable_diff_size` above the default 1000.
 
 ### QW:TODO / LintErrors triage
 
@@ -201,7 +203,7 @@ The wiki's `Template:Deprecated template` has 208 transclusions (including `/doc
 | 简繁/地区词转换 | implemented as `cangjie` (NoteTA/CGroup first, then OpenCC; NoteTA-less pages use OpenCC only) |
 | QW:CAT `Category:` prefix / duplicate links / sort keys / `catnav` | implemented in `category_policy` |
 | `cellspacing` / `cellpadding` | not auto-fixed (no safe local CSS substitute) |
-| `.w` / `!w` / `-w` series | not auto-fixed (needs `nowrap begin/end` pairing or a deliberate `{{·}}` rewrite) |
+| `.w` / `!w` / `-w` series | navbox `list`/`group`/`above`/`below` rows are converted to unordered lists by `nowrap_fixes`; already-wrapped and non-navbox uses are left for manual review |
 | ISBN without `{{ISBN}}` | not auto-fixed (regex false positives) |
 | Rail/bus module data, script errors, policy/manual work | out of scope for this bot |
 
@@ -224,7 +226,7 @@ Where to put things:
 
 ## Testing
 
-The suite is plain `unittest` — 318 test cases under `tests/`, no pytest dependency:
+The suite is plain `unittest` — 345 test cases under `tests/`, no pytest dependency:
 
 ```bash
 python -m unittest discover
@@ -240,7 +242,7 @@ Coverage includes:
 
 - extension input/output behaviour (`test_extensions.py`) and template rules (`test_core.py`)
 - NoteTA/CGroup parsing, single-pass conversion and the CGroup cache (`test_noteta.py`)
-- Cangjie protected-region handling (`test_cangjie.py`), lint/obsolete-syntax fixes (`test_lint_fixes.py`), category-policy sort keys/catnav (`test_category_policy.py`) and the `Template:Void` alias preload/chain logic (`test_extensions.py`)
+- Cangjie protected-region handling (`test_cangjie.py`), lint/obsolete-syntax fixes (`test_lint_fixes.py`), category-policy sort keys/catnav (`test_category_policy.py`), navbox `.w` list conversion (`test_nowrap_fixes.py`), the `Template:Void` alias preload/chain logic (`test_extensions.py`), and the reviewed deprecated-template rules (`test_deprecated_rules.py`)
 - the `@job`/`@intro` registries and `Marks` (`test_registry.py`)
 - settings loading and every `validate()` rule (`test_settings.py`)
 - pure helpers: `diff_size`, `pageid_batches`, `disallowed_tags`

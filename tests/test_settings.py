@@ -114,6 +114,25 @@ class SettingsValidationTest(unittest.TestCase):
     def test_enable_cangjie_is_accepted(self) -> None:
         make_settings(enable_cangjie=True).validate()
 
+    def test_isbn_style_accepts_known_conventions(self) -> None:
+        for style in ("qiuwen", "moegirl", "Qiuwen"):
+            make_settings(isbn_template_style=style).validate()
+
+    def test_unknown_isbn_style_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            make_settings(isbn_template_style="other").validate()
+        self.assertIn("isbn_template_style", str(ctx.exception))
+
+    def test_mistyped_isbn_template_names_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            make_settings(isbn_template_names="ISBN").validate()
+
+    def test_invisible_character_settings_are_accepted(self) -> None:
+        make_settings(
+            enable_invisible_chars_fix=True,
+            invisible_chars_aggressive=True,
+        ).validate()
+
     def test_page_id_end_lower_than_start_is_rejected(self) -> None:
         with self.assertRaises(ValueError) as ctx:
             make_settings(category="", page_id_start=10, page_id_end=5).validate()

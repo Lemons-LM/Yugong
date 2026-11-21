@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated CHN-1928 template with the direct [[中华民国|中国]] link it expands to."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "CHN-1928",]
+
+[template_level]
+replace = "[[中华民国|中国]]"

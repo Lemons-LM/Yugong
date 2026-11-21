@@ -1,4 +1,4 @@
-introduction = "Replace the deprecated {{國家基礎資訊}} wrapper with {{Infobox country}} using the mapping defined by Template:國家基礎資訊"
+introduction = "Replace the deprecated {{ 國家基礎資訊 }} wrapper with {{ Infobox country }} using the wrapper defined by the wiki."
 apply_websites = [ "qiuwenbaike.cn",]
 names = [ "國家基礎資訊",]
 

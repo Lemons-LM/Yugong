@@ -121,13 +121,18 @@ The shipped extensions double as examples:
 | File | Wiki needed | What it does |
 |------|-------------|--------------|
 | `example.py` | No | Deliberately a no-op; copy this to start |
-| `fix_cite_template.py` | No | Rewrites `Cite*` anonymous parameters with `{{!}}` |
+| `fix_cite_template.py` | No | Rejoins parameter fragments split by an unescaped pipe with `{{!}}` |
 | `rm_undefined_refs.py` | No | Removes self-closing named refs with no definition |
 | `rm_void_template.py` | Yes | Removes templates redirecting to `Template:Void` (preloaded alias set + redirect chains) |
 | `category_handler.py` | Yes | Converts/redirects category links (bot_db cached, NoteTA/CGroup + OpenCC) |
 | `category_policy.py` | No | QW:CAT prefix / duplicate link / sort key / `catnav` rules |
 | `cangjie.py` | Yes | NoteTA/CGroup + OpenCC visible-text conversion (`enable_cangjie`) |
 | `lint_fixes.py` | No | Obsolete tags/attributes, self-closing tags, headings, image sizes, sort keys |
+| `nowrap_fixes.py` | No | Navbox `.w`/`!w`/`-w` rows → unordered lists; other uses reported |
+| `isbn_normalise.py` | No | Hyphenate ISBN-10/13, clean up BookSources links, optional ISBN-13 conversion / ISBNT merge (`enable_isbn_normalise`, `isbn_template_style`) |
+| `rm_invisible_chars.py` | No | Remove zero-width/format/control characters, skipping `nowiki`/code/math and comments (`enable_invisible_chars_fix`) |
+
+`isbn_normalise` reads the bundled `src/Yugong/resources/RangeMessage.xml` (override with `isbn_range_message_path`). Its `isbn_template_style` setting exists because the two wikis interpret `{{ISBN}}` differently: Qiuwen uses parameters 1–9 as a list of ISBNs, while Moegirl uses parameter 2 as display text. See [isbn-normalise.md](isbn-normalise.md).
 
 ## Testing locally
 

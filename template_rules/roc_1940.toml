@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated ROC-1940 template with the direct [[汪伪政权]] link it expands to."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "ROC-1940",]
+
+[template_level]
+replace = "[[汪伪政权]]"

@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated Double image wrapper with the reviewed Multiple image mapping (positional params 1-9, valign)."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "Double image",]
+
+[template_level]
+replace = "{{multiple image\n| align = {{#switch: {{{1|}}} |left|right={{{1|}}}|center|centre=center}}\n| direction = horizontal\n| image1 = {{{2|}}}\n| width1 = {{{3|0}}}\n| alt1 = {{{8|}}}\n| caption1 = {{#if: {{{7|}}} | {{{6|}}} }}\n| image2 = {{{4|}}}\n| width2 = {{{5|0}}}\n| alt2 = {{{9|}}}\n| caption2 = {{{7|}}}\n| footer = {{#if: {{{7|}}} || {{{6|}}} }}\n| footer_align = left\n| valign = {{{valign|middle}}}\n}}"

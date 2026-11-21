@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated Translink/Tsl cross-language helper with an internal link to the Chinese title (param 3), falling back to the foreign title (param 2), preserving an explicit display name (param 4)."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "Translink", "Tsl",]
+
+[template_level]
+replace = "[[{{#if:{{{3|}}}|{{{3|}}}|{{{2|}}}}}|{{#if:{{{4|}}}|{{{4|}}}|{{#if:{{{3|}}}|{{{3|}}}|{{{2|}}}}}}}]]"

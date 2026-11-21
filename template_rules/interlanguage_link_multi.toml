@@ -1,0 +1,6 @@
+introduction = "Rename the deprecated Interlanguage link multi to the current 多語言連結 template, which links the Chinese title (param 1)."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "多語言連結", "Interlanguage link multi",]
+
+[template_level]
+rename = true

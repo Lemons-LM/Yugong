@@ -67,6 +67,14 @@ class Settings:
     overwrite_para_name: bool = True
     overwrite_template_name: bool = True
     enable_cangjie: bool = False
+    enable_isbn_normalise: bool = False
+    isbn_template_style: str = "qiuwen"
+    isbn_convert_10_to_13: bool = False
+    isbn_rehyphenate_equal_label: bool = False
+    isbn_template_names: list[str] = []
+    isbn_range_message_path: str = ""
+    enable_invisible_chars_fix: bool = False
+    invisible_chars_aggressive: bool = False
     enable_heartbeat: bool = False
     edit_comment: str = "Edited by Yugong (gh:Lemons-LM/Yugong) program"
 
@@ -176,6 +184,7 @@ class Settings:
             "api_endpoint", "user_agent", "user_agent_format", "user_agent_check",
             "bot_name", "wiki_domain", "wiki_lang", "wiki_family", "wiki_tag",
             "linked_template", "category", "edit_comment",
+            "isbn_template_style", "isbn_range_message_path",
         )
         for name in string_fields:
             value = getattr(self, name)
@@ -188,6 +197,9 @@ class Settings:
         bool_fields = (
             "is_owner_only", "bypass_confirm_settings", "submit_changes",
             "overwrite_para_name", "overwrite_template_name", "enable_cangjie",
+            "enable_isbn_normalise", "isbn_convert_10_to_13",
+            "isbn_rehyphenate_equal_label",
+            "enable_invisible_chars_fix", "invisible_chars_aggressive",
             "enable_heartbeat", "is_dangerous_tag_unacceptable", "log_timestamp",
         )
         for name in bool_fields:
@@ -210,7 +222,10 @@ class Settings:
                     f"got {type(value).__name__}."
                 )
 
-        list_fields = ("safe_tag_list", "unsafe_tag_list", "mail_recipients")
+        list_fields = (
+            "safe_tag_list", "unsafe_tag_list", "mail_recipients",
+            "isbn_template_names",
+        )
         for name in list_fields:
             value = getattr(self, name)
             if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -324,6 +339,15 @@ class Settings:
             raise ValueError(
                 "Warning: safe_tag_list and unsafe_tag_list cannot both be set in "
                 "settings.toml — pick one allow-list or one deny-list."
+            )
+
+        if str(self.isbn_template_style).strip().casefold() not in {
+            "qiuwen", "moegirl",
+        }:
+            raise ValueError(
+                "Warning: isbn_template_style must be 'qiuwen' or 'moegirl' in "
+                "settings.toml; the two wikis interpret {{ISBN}} parameters "
+                "differently."
             )
 
         if int(self.max_acceptable_diff_size) <= 0:

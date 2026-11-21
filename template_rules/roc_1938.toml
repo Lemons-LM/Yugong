@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated ROC-1938 template with the link and text it expands to."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "ROC-1938",]
+
+[template_level]
+replace = "伪“[[中華民國維新政府]]”"

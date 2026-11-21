@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated Font color with the Color template, preserving foreground and text (background/link color are not supported by Color)."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "Font color",]
+
+[template_level]
+replace = "{{color|{{{fg|{{{1|}}}}}}|{{{text|{{{3|{{{2|}}}}}}}}}}}"

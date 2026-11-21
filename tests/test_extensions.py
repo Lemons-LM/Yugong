@@ -28,14 +28,36 @@ class ExampleExtensionTest(unittest.TestCase):
 
 
 class FixCiteTemplateTest(unittest.TestCase):
-    def test_joins_later_anonymous_params_with_the_pipe_magic_word(self) -> None:
+    def test_rejoins_url_fragment_into_the_url_parameter(self) -> None:
         self.assertEqual(
-            run_job(fc.fix_cite_template_job, "{{Cite web|http://example.com|Foo|title=Bar}}"),
-            "{{Cite web|http://example.com{{!}}Foo|title=Bar}}",
+            run_job(fc.fix_cite_template_job, "{{Cite web|url=http://example.com|Foo|title=Bar}}"),
+            "{{Cite web|url=http://example.com{{!}}Foo|title=Bar}}",
+        )
+
+    def test_rejoins_every_contiguous_url_fragment(self) -> None:
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|url=http://x|a|b|title=Bar}}"),
+            "{{Cite web|url=http://x{{!}}a{{!}}b|title=Bar}}",
+        )
+
+    def test_rejoins_fragment_into_a_non_url_parameter(self) -> None:
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|url=http://x|title=Foo|Bar}}"),
+            "{{Cite web|url=http://x|title=Foo{{!}}Bar}}",
+        )
+
+    def test_rejoins_fragment_into_each_preceding_parameter(self) -> None:
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|url=http://x|a|title=Bar|baz}}"),
+            "{{Cite web|url=http://x{{!}}a|title=Bar{{!}}baz}}",
         )
 
     def test_named_only_templates_are_untouched(self) -> None:
         text = "{{Cite web|url=http://x|title=Foo}}"
+        self.assertEqual(run_job(fc.fix_cite_template_job, text), text)
+
+    def test_anonymous_url_without_url_key_is_untouched(self) -> None:
+        text = "{{Cite web|http://example.com|Foo|title=Bar}}"
         self.assertEqual(run_job(fc.fix_cite_template_job, text), text)
 
     def test_single_anonymous_param_is_untouched(self) -> None:
@@ -50,10 +72,10 @@ class FixCiteTemplateTest(unittest.TestCase):
         self.assertEqual(run_job(fc.fix_cite_template_job, "{{Cite book}}"), "{{Cite book}}")
 
     def test_nested_cite_templates_do_not_crash_on_detached_nodes(self) -> None:
-        text = "{{Cite web|u|Foo|{{Cite book|x|y}}}}"
+        text = "{{Cite web|url=http://x|Foo|title={{Cite book|url=http://y|Bar}}}}"
         result = run_job(fc.fix_cite_template_job, text)
         self.assertIn("{{!}}", result)
-        self.assertIn("{{Cite book|x|y}}", result)
+        self.assertIn("{{Cite book|url=http://y|Bar}}", result)
 
     def test_intro_mentions_cite(self) -> None:
         self.assertIn("Cite", fc.fix_cite_template_intro())

@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated China mainland link template with a direct internal link."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "中国大陆",]
+
+[template_level]
+replace = "[[中国大陆]]"

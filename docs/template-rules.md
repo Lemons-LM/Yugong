@@ -120,11 +120,31 @@ Later, during page processing, `format_template()` runs as the first step: for e
 
 ## Shipped rules
 
+Deprecated templates are reviewed one at a time; the full rationale and the
+manual list are in [`docs/deprecated-template-review.md`](deprecated-template-review.md).
+
 | File | What it does |
 |------|--------------|
-| `deprecated_city.toml` | Replaces `{{城市|...}}` with the exact `{{Infobox settlement|...}}` mapping defined by `Template:城市` |
-| `deprecated_country_infobox.toml` | Replaces `{{國家基礎資訊|...}}` with the exact `{{Infobox country|...}}` mapping defined by `Template:國家基礎資訊` |
+| `internal_link_helper.toml` | `Internal link helper`, its 92 language subpages, 90 `Link-*` aliases and `Ilh` → `[[{{{1\|}}}]]` (Qiuwen has no foreign editions) |
+| `translink.toml` | `Translink`/`Tsl` → internal link to param 3, else param 2; display param 4 |
+| `interlanguage_link_multi.toml` | `Interlanguage link multi` → rename to `多語言連結` |
+| `deprecated_city.toml` | `{{城市}}` → exact wiki-defined `{{Infobox settlement}}` wrapper |
+| `deprecated_country_infobox.toml` | `{{國家基礎資訊}}` → exact wiki-defined `{{Infobox country}}` wrapper |
+| `double_image.toml` | `Double image` → reviewed `Multiple image` positional mapping |
+| `short_description.toml` | Delete `Short description` (not enabled on Qiuwen) |
+| `font_color.toml` | `Font color` → `Color` (foreground + text) |
+| `china_*`, `roc_*`, `chn_1928.toml` | Direct links for the link-only country templates |
 
-Both use `template_level.replace` and `apply_websites = ["qiuwenbaike.cn"]`. The country replacement is about 6.5k characters after expansion, so a run that applies it needs `max_acceptable_diff_size` above the default 1000. The city replacement is about 800 characters.
+The `.w`/`!w`/`-w` series is handled by `extensions/nowrap_fixes.py`, not a
+TOML rule: navbox `list`/`group`/`above`/`below` values are converted to
+unordered lists (the list starts on a new line after `=`), while already
+nowrap-wrapped values and non-navbox uses are left alone.
 
-These were generated from the wiki's own deprecated wrapper templates (no hand-written parameter mapping). The other deprecated templates that declare a `new=` target — `Clickable button`, `Demography 4col`, `DisestcatCountry`, `DisestcatUSstate`, `Double image`, `Infobox DRCongo province`, `Infobox star`, `Markup`, `PBB`, `Ping2`, `Respell`, `Start rail box`, `Vertical images list` — are deliberately not shipped as blind renames: they use modules, have a different parameter model, or need a parameter-aware migration that this engine cannot express safely.
+All shipped rules use `apply_websites = ["qiuwenbaike.cn"]`. The country
+replacement is about 3.5k changed characters after expansion, so a run that
+applies it needs `max_acceptable_diff_size` above the default 1000.
+
+Other deprecated templates — flag templates, footnotes, `Cite GB`/`Cite Q`,
+licence tags, `Expand`, `Dablink`, the `BS*` railway family, and the
+infobox/module wrappers — are deliberately left manual because a blind rename
+would lose or misinterpret parameters.

@@ -1,0 +1,93 @@
+name: Update Booksource Aliases
+
+on:
+  workflow_dispatch:
+  schedule:
+    # January 1st and July 1st at 03:05 UTC — twice a year
+    - cron: "05 3 1 1,7 *"
+
+jobs:
+  update-booksource-aliases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Fetch and update BOOKSOURCE_PAGE_ALIASES
+        run: |
+          python3 - <<'PYEOF'
+          import json, re, sys, urllib.request
+
+          WIKI_API = "https://mzh.moegirl.org.cn/api.php"
+          UA = "ISBNNormaliser-Bot/1.1 (update-booksource-aliases GHA)"
+          BOOKSOURCE_REALNAME = "Booksources"
+
+          url = (
+              f"{WIKI_API}"
+              "?action=query&format=json"
+              "&meta=siteinfo&siprop=specialpagealiases&formatversion=2"
+          )
+          req = urllib.request.Request(url, headers={"User-Agent": UA})
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+
+          def canonicalise(value):
+              """Mirror canonicalise_title_fragment from isbn_template_normalise.py."""
+              return "".join(
+                  ch for ch in value.strip().casefold()
+                  if not ch.isspace() and ch != "_"
+              )
+
+          # Always keep the software-defined realname as a canonical fallback.
+          aliases = {canonicalise(BOOKSOURCE_REALNAME)}
+
+          realname_lower = BOOKSOURCE_REALNAME.casefold()
+          for entry in data.get("query", {}).get("specialpagealiases", []) or []:
+              if not isinstance(entry, dict):
+                  continue
+              if entry.get("realname", "").casefold() != realname_lower:
+                  continue
+              for alias in entry.get("aliases", []) or []:
+                  if isinstance(alias, str) and alias:
+                      canon = canonicalise(alias)
+                      if canon:
+                          aliases.add(canon)
+              break
+
+          sorted_aliases = sorted(aliases)
+          # Reconstruct as frozenset({...}) — same style as the original constant.
+          aliases_repr = "frozenset({" + ", ".join(f'"{a}"' for a in sorted_aliases) + "})"
+
+          path = "isbn_template_normalise.py"
+          text = open(path, encoding="utf-8").read()
+          new_text = re.sub(
+              r"BOOKSOURCE_PAGE_ALIASES\s*=\s*frozenset\(\{[^}]*\}\)",
+              f"BOOKSOURCE_PAGE_ALIASES = {aliases_repr}",
+              text,
+          )
+
+          if new_text == text:
+              print("BOOKSOURCE_PAGE_ALIASES is already up to date.")
+              sys.exit(0)
+
+          open(path, "w", encoding="utf-8").write(new_text)
+          print(f"Updated BOOKSOURCE_PAGE_ALIASES: {sorted_aliases}")
+          PYEOF
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add isbn_template_normalise.py
+          commit_title="chore(deps): update BOOKSOURCE_PAGE_ALIASES"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            commit_body="triggered manually by @${GITHUB_ACTOR}."
+            commit_trailers="Co-authored-by: ${GITHUB_ACTOR} <${GITHUB_ACTOR}@users.noreply.github.com>"
+            full_msg=$(printf "%s\n\n%s\n\n%s" "$commit_title" "$commit_body" "$commit_trailers")
+          else
+            commit_body="automated by GitHub Actions."
+            full_msg=$(printf "%s\n\n%s" "$commit_title" "$commit_body")
+          fi
+          git commit -m "$full_msg" || echo "No changes to commit"
+          git push

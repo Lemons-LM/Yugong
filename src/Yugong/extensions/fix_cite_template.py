@@ -1,17 +1,23 @@
-"""Fix unnamed-parameter pipe ambiguity in Cite-* templates.
+"""Fold unescaped pipes in ``Cite*`` template parameters back into place.
 
-Qiuwen's ``Cite*`` templates are called with anonymous (positional) parameters
-whose first value is a URL.  A bare ``|`` inside such a value would be read by
-MediaWiki as the next parameter separator, so everything after the first
-anonymous parameter is joined onto it with ``{{!}}`` instead::
+Qiuwen's ``Cite*`` templates take no anonymous (positional) parameters: every
+value belongs to a named parameter such as ``url=`` or ``title=``.  A bare
+``|`` inside any such value is still read by MediaWiki as a parameter
+separator, so the rest of the value ends up as one or more anonymous
+parameters::
 
-    {{Cite web|http://example.com|Foo|title=Bar}}
+    {{Cite web|url=http://example.com|Foo|title=Bar}}
     ->
-    {{Cite web|http://example.com{{!}}Foo|title=Bar}}
+    {{Cite web|url=http://example.com{{!}}Foo|title=Bar}}
 
-The first anonymous parameter keeps its plain ``|`` because that pipe is the
-template-name separator.  This behaviour is deliberate and locked down by
-tests/test_extensions.py.
+    {{Cite web|url=http://x|title=Foo|Bar}}
+    ->
+    {{Cite web|url=http://x|title=Foo{{!}}Bar}}
+
+Every anonymous parameter is folded back into the named parameter it directly
+follows.  Anonymous parameters before the first named parameter are left
+untouched, because the source of their pipes cannot be determined safely.
+This behaviour is locked down by tests/test_extensions.py.
 """
 
 from __future__ import annotations
@@ -27,26 +33,39 @@ from src.Yugong.utilities.mark_job_intro import intro, job
 _CITE_RE = re.compile(r"^Cite[\s_]", re.IGNORECASE)
 
 
-def _needs_escape(template: mph.wikicode.Template) -> bool:
-    """Return ``True`` if *template* has at least one anonymous parameter."""
-    return any(not param.showkey for param in template.params)
+def _fragment_indices(template: mph.wikicode.Template) -> set[int]:
+    """Return the positions of anonymous params that continue an earlier one.
+
+    Each anonymous parameter is the tail of the named parameter it directly
+    follows: its value was split by an unescaped ``|``.  Anonymous parameters
+    before the first named parameter do not qualify.
+    """
+    indices: set[int] = set()
+    previous_is_named = False
+
+    for index, param in enumerate(template.params):
+        if param.showkey:
+            previous_is_named = True
+        elif previous_is_named:
+            indices.add(index)
+
+    return indices
 
 
 def _rebuild(template: mph.wikicode.Template) -> str:
-    """Render *template*, joining later anonymous parameters with ``{{!}}``."""
+    """Render *template*, folding fragments into the parameter they follow."""
+    fragments = _fragment_indices(template)
     parts = ["{{", str(template.name).strip()]
-    seen_anonymous = False
 
-    for param in template.params:
+    for index, param in enumerate(template.params):
         value = str(param.value)
         if param.showkey:
             parts.append(f"|{param.name}={value}")
-        elif not seen_anonymous:
-            # The first pipe after the template name is a real separator.
-            parts.append(f"|{value}")
-            seen_anonymous = True
+        elif index in fragments:
+            # Attach to the previous parameter's rendered text.
+            parts[-1] += f"{{{{!}}}}{value}"
         else:
-            parts.append(f"{{{{!}}}}{value}")
+            parts.append(f"|{value}")
 
     parts.append("}}")
     return "".join(parts)
@@ -64,13 +83,13 @@ def _still_attached(wikitext: Wikitext, template: mph.wikicode.Template) -> bool
 
 @job
 def fix_cite_template_job(wikitext: Wikitext) -> None:
-    """Rewrite every ``Cite*`` template that has anonymous parameters."""
+    """Rejoin parameter fragments split off by an unescaped ``|``."""
     for template in wikitext.templates():
         if not _still_attached(wikitext, template):
             continue
         if not _CITE_RE.match(str(template.name).strip()):
             continue
-        if not _needs_escape(template):
+        if not _fragment_indices(template):
             continue
 
         new_text = _rebuild(template)
@@ -80,4 +99,4 @@ def fix_cite_template_job(wikitext: Wikitext) -> None:
 
 @intro
 def fix_cite_template_intro() -> str:
-    return "Fix Cite templates: use {{!}} as separator before unnamed params"
+    return "Fix Cite templates: rejoin fragments split by an unescaped pipe"

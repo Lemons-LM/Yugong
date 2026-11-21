@@ -1,4 +1,4 @@
-introduction = "Replace the deprecated {{城市}} wrapper with {{Infobox settlement}} using the mapping defined by Template:城市"
+introduction = "Replace the deprecated {{ 城市 }} wrapper with {{ Infobox settlement }} using the wrapper defined by the wiki."
 apply_websites = [ "qiuwenbaike.cn",]
 names = [ "城市",]
 

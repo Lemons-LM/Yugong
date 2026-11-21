@@ -1,0 +1,6 @@
+introduction = "Replace the deprecated 中國電影產地 template with the direct [[中国]] link it expands to."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "中國電影產地",]
+
+[template_level]
+replace = "[[中国]]"

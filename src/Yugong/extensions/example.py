@@ -38,9 +38,9 @@ from src.Yugong.utilities.mark_job_intro import intro, job
 
 
 @job
-def template_example_job(wikitext: Wikitext) -> None:
+def template_example_job(wikitext: Wikitext) -> Wikitext:
     """Do nothing — this is the copy-me template, not a real transformation."""
-    return None
+    return wikitext
 
 
 @intro

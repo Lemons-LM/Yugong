@@ -1,0 +1,6 @@
+introduction = "Remove the deprecated Short description template; the Qiuwen documentation says it was imported from English Wikipedia but is not enabled here."
+apply_websites = [ "qiuwenbaike.cn",]
+names = [ "Short description",]
+
+[template_level]
+delete = true

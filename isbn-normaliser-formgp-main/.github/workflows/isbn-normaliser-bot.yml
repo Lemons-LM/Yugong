@@ -1,0 +1,60 @@
+name: ISBN Normaliser Bot
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "Page fetch strategy (empty = use DEFAULT_QUERY from .env)"
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - transcludedin
+          - booksource-search
+      dry_run:
+        description: "Run in dry-run mode (no edits will be saved)?"
+        required: false
+        default: false
+        type: boolean
+      max_edits:
+        description: "Maximum number of edits to perform (optional, leave empty for unlimited)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "15 20 1 */2 *"
+
+jobs:
+  normalise-isbn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ISBN Normaliser Bot
+        env:
+          BOT_USERNAME: ${{ secrets.BOT_USERNAME }}
+          BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.query }}" ]; then
+            ARGS="$ARGS --query ${{ github.event.inputs.query }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ github.event.inputs.max_edits }}" ]; then
+            ARGS="$ARGS --max-edits ${{ github.event.inputs.max_edits }}"
+          fi
+          python mw_isbn_bot.py $ARGS
