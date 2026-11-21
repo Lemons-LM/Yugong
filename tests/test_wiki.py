@@ -64,6 +64,29 @@ class PywikibotConfigTest(unittest.TestCase):
             self.assertEqual(config.retry_max, 7)
             self.assertEqual(config.socket_timeout, (6.05, 11))
 
+    def test_cosmetic_changes_cannot_rewrite_the_checked_text(self) -> None:
+        wiki_module.apply_pywikibot_config()
+        self.assertFalse(config.cosmetic_changes)
+
+
+class WikiUrlTest(unittest.TestCase):
+    def test_api_url_is_derived_from_a_directory(self) -> None:
+        instance = wiki_module.Wiki(bot_name="B", api_endpoint="https://x.example/")
+        self.assertEqual(instance.api_url, "https://x.example/api.php")
+        self.assertEqual(instance.base_url, "https://x.example/")
+
+    def test_api_url_accepts_an_api_php_endpoint(self) -> None:
+        instance = wiki_module.Wiki(bot_name="B", api_endpoint="https://x.example/api.php")
+        self.assertEqual(instance.api_url, "https://x.example/api.php")
+        self.assertEqual(instance.base_url, "https://x.example/")
+
+    def test_an_invalid_endpoint_fails_when_used_not_at_import(self) -> None:
+        """Importing must never require a valid wiki (dev mode relies on it)."""
+        instance = wiki_module.Wiki(bot_name="B", api_endpoint="x.example")
+        self.assertEqual(instance.api_url, "")
+        with mock.patch.object(settings, "request_max_tries", 1):
+            self.assertIsNone(instance._api_get({"action": "query"}))
+
 
 class ApiGetTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -178,6 +201,26 @@ class SuppressionCheckTest(unittest.TestCase):
                 self.instance, "_api_get", return_value=self.payload(7)
             ):
                 self.instance._check_suppressed_action()
+
+    def test_creating_a_previously_absent_signal_page_stops_the_bot(self) -> None:
+        """The FIRST edit of the page must stop the bot, not become a baseline."""
+        with TemporaryDirectory() as tmp:
+            self.instance.heartbeat_file = str(Path(tmp) / "heartbeat")
+            with mock.patch.object(
+                self.instance, "_api_get", return_value=self.payload(None)
+            ):
+                self.instance._check_suppressed_action()
+            self.assertEqual(
+                Path(self.instance.heartbeat_file).read_text(encoding="utf-8"),
+                wiki_module.SUPPRESSION_PAGE_ABSENT,
+            )
+
+            with mock.patch.object(
+                self.instance, "_api_get", return_value=self.payload(99)
+            ), mock.patch.object(wiki_module.mailer, "email") as email:
+                with self.assertRaises(SystemExit):
+                    self.instance._check_suppressed_action()
+            self.assertEqual(email.call_count, 1)
 
     def test_changed_revision_stops_the_bot_and_alerts(self) -> None:
         with TemporaryDirectory() as tmp:

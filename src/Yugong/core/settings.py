@@ -11,6 +11,7 @@ wiki.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ import toml
 
 from src.Yugong.core.logger import level_from_setting
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
+from src.Yugong.utilities.urls import is_supported_url
 
 #: Upper bound for a ``page_id_start``/``page_id_end`` sweep, as a guard against
 #: accidentally queueing a whole wiki.
@@ -90,11 +92,27 @@ class Settings:
         with open(self.path, "r", encoding="utf-8") as f:
             settings_dict: dict[str, Any] = toml.load(f)
 
+        self._unknown_keys: list[str] = []
         for key, value in settings_dict.items():
-            if value is not None:
-                self.set(key=key, value=value)
+            if value is None:
+                continue
+            if key not in self._known_keys():
+                self._unknown_keys.append(key)
+                continue
+            self.set(key=key, value=value)
 
     # ── Loading helpers ───────────────────────────────────────────────
+
+    @classmethod
+    def _known_keys(cls) -> set[str]:
+        """Every configurable option (declared class attributes, no methods)."""
+        return {
+            name
+            for name in dir(cls)
+            if not name.startswith("_")
+            and name != "path"
+            and not callable(getattr(cls, name))
+        }
 
     def set(self, *, key: str, value: Any) -> None:
         """Set one option, shadowing the class-level default."""
@@ -108,9 +126,14 @@ class Settings:
         """
         instance = cls.__new__(cls)
         instance.path = PROJECT_ROOT / "settings.toml"
+        instance._unknown_keys = []
         for key, value in values.items():
-            if value is not None:
-                instance.set(key=key, value=value)
+            if value is None:
+                continue
+            if key not in cls._known_keys():
+                instance._unknown_keys.append(key)
+                continue
+            instance.set(key=key, value=value)
         return instance
 
     def describe(self) -> str:
@@ -120,7 +143,7 @@ class Settings:
         lines = []
         for name in sorted(keys):
             value = getattr(self, name)
-            if callable(value) or name == "path":
+            if callable(value) or name == "path" or name.startswith("_"):
                 continue
             lines.append(f"{name} is set to {value!r}")
         return "\n".join(lines)
@@ -142,16 +165,94 @@ class Settings:
 
     # ── Validation ────────────────────────────────────────────────────
 
+    def _validate_types(self) -> None:
+        """Reject values whose TOML type cannot work with the code below.
+
+        Without this, e.g. ``safe_tag_list = "script"`` would be iterated
+        character by character and ``page_id_start = "abc"`` crashed with a
+        bare ``ValueError`` from ``int()``.
+        """
+        string_fields = (
+            "api_endpoint", "user_agent", "user_agent_format", "user_agent_check",
+            "bot_name", "wiki_domain", "wiki_lang", "wiki_family", "wiki_tag",
+            "linked_template", "category", "edit_comment",
+        )
+        for name in string_fields:
+            value = getattr(self, name)
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"Warning: {name} must be a string in settings.toml, "
+                    f"got {type(value).__name__}."
+                )
+
+        bool_fields = (
+            "is_owner_only", "bypass_confirm_settings", "submit_changes",
+            "overwrite_para_name", "overwrite_template_name", "enable_cangjie",
+            "enable_heartbeat", "is_dangerous_tag_unacceptable", "log_timestamp",
+        )
+        for name in bool_fields:
+            value = getattr(self, name)
+            if not isinstance(value, bool):
+                raise ValueError(
+                    f"Warning: {name} must be true or false in settings.toml, "
+                    f"got {type(value).__name__}."
+                )
+
+        int_fields = (
+            "page_id_start", "page_id_end", "max_acceptable_diff_size",
+            "request_max_tries", "request_timeout", "log_level",
+        )
+        for name in int_fields:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"Warning: {name} must be an integer in settings.toml, "
+                    f"got {type(value).__name__}."
+                )
+
+        list_fields = ("safe_tag_list", "unsafe_tag_list", "mail_recipients")
+        for name in list_fields:
+            value = getattr(self, name)
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError(
+                    f"Warning: {name} must be a list of strings in settings.toml."
+                )
+
+    def _validate_wiki_tag(self) -> None:
+        """Keep ``wiki_tag`` usable as a safe file name (no path traversal)."""
+        tag = str(self.wiki_tag)
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", tag) or tag in {".", ".."}:
+            raise ValueError(
+                f"Warning: wiki_tag {tag!r} may only contain letters, digits, "
+                "dots, underscores and hyphens; it is used in cache/<wiki_tag>.json."
+            )
+
     def validate(self) -> None:
         """Raise a descriptive error if the configuration cannot be used.
 
         Called by the orchestrator after the user has reviewed the settings, so
         that merely importing a module stays possible without a configured wiki.
         """
+        self._validate_types()
+
+        if self._unknown_keys:
+            raise ValueError(
+                "Warning: unknown option(s) in settings.toml: "
+                f"{', '.join(sorted(self._unknown_keys))}. "
+                "Check the spelling — a typo used to be accepted silently."
+            )
+
         if not str(self.api_endpoint).strip():
             raise ValueError(
                 "Warning: Check api_endpoint defined in settings.toml. \n"
                 "The program does not know which wiki it is."
+            )
+
+        if not is_supported_url(str(self.api_endpoint)):
+            raise ValueError(
+                f"Warning: api_endpoint {self.api_endpoint!r} is not an absolute "
+                "http(s) URL. Use e.g. https://wiki.example/ (the directory that "
+                "contains api.php) or https://wiki.example/api.php."
             )
 
         if not self.is_owner_only:
@@ -164,8 +265,23 @@ class Settings:
         if not str(self.bot_name).strip():
             raise ValueError("Warning: bot_name must not be empty in settings.toml.")
 
+        for name in ("user_agent", "user_agent_check", "user_agent_format"):
+            if not str(getattr(self, name)).strip():
+                raise ValueError(
+                    f"Warning: {name} must not be empty in settings.toml; an "
+                    "empty User-Agent is rejected by many wikis and WAFs."
+                )
+
         if not str(self.wiki_domain).strip():
             raise ValueError("Warning: wiki_domain must not be empty in settings.toml.")
+
+        if not str(self.wiki_lang).strip():
+            raise ValueError("Warning: wiki_lang must not be empty in settings.toml.")
+
+        if not str(self.wiki_family).strip():
+            raise ValueError("Warning: wiki_family must not be empty in settings.toml.")
+
+        self._validate_wiki_tag()
 
         if not str(self.edit_comment).strip():
             raise ValueError(
@@ -173,11 +289,20 @@ class Settings:
                 "attributable to the bot."
             )
 
-        if not (self.pageid_range() or self.linked_template or self.category):
+        if not (
+            self.pageid_range()
+            or str(self.linked_template).strip()
+            or str(self.category).strip()
+        ):
             raise ValueError(
                 "Warning: Check # About Task part defined in settings.toml. \n"
                 "Set page_id_start (optionally with page_id_end), linked_template "
                 "or category so the program knows what to do."
+            )
+
+        if int(self.page_id_start) < 0 or int(self.page_id_end) < 0:
+            raise ValueError(
+                "Warning: page_id_start and page_id_end must not be negative."
             )
 
         page_range = self.pageid_range()
@@ -214,14 +339,6 @@ class Settings:
             raise ValueError("Warning: request_timeout must be at least 1 second.")
 
         level_from_setting(self.log_level)
-
-        if self.enable_cangjie:
-            raise NotImplementedError(
-                "enable_cangjie is not implemented: YuGong does not perform "
-                "automatic Chinese variant conversion yet. Set enable_cangjie = "
-                "false in settings.toml, or use the category_handler extension "
-                "which converts category titles through OpenCC when available."
-            )
 
 
 settings: Settings = Settings()

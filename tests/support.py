@@ -31,6 +31,19 @@ class FakeBotDB:
         self.rows.setdefault(table, []).append(dict(data))
         return True
 
+    def update(
+        self,
+        table: str,
+        data: dict[str, Any],
+        conditions: dict[str, Any],
+    ) -> bool:
+        changed = False
+        for row in self.rows.get(table, []):
+            if all(row.get(key) == value for key, value in conditions.items()):
+                row.update(data)
+                changed = True
+        return changed
+
     def search(
         self,
         table: str,

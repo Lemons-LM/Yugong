@@ -34,6 +34,37 @@ class SettingsValidationTest(unittest.TestCase):
             make_settings(api_endpoint="").validate()
         self.assertIn("api_endpoint", str(ctx.exception))
 
+    def test_api_endpoint_must_be_an_absolute_http_url(self) -> None:
+        for bad in ("wiki.example.com", "ftp://wiki.example.com/", "https:///x"):
+            with self.assertRaises(ValueError) as ctx:
+                make_settings(api_endpoint=bad).validate()
+            self.assertIn("absolute", str(ctx.exception))
+
+    def test_api_endpoint_accepts_an_api_php_url(self) -> None:
+        make_settings(api_endpoint="https://wiki.example.com/api.php").validate()
+
+    def test_unknown_option_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            make_settings(safe_tag_lst=["ref"]).validate()
+        self.assertIn("unknown option", str(ctx.exception))
+        self.assertIn("safe_tag_lst", str(ctx.exception))
+
+    def test_mistyped_string_list_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            make_settings(safe_tag_list="script").validate()
+        self.assertIn("list of strings", str(ctx.exception))
+
+    def test_mistyped_integer_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            make_settings(request_max_tries="three").validate()
+        self.assertIn("integer", str(ctx.exception))
+
+    def test_wiki_tag_cannot_escape_the_cache_directory(self) -> None:
+        for bad in ("../../etc/passwd", "a/b", "..", ""):
+            with self.assertRaises(ValueError) as ctx:
+                make_settings(wiki_tag=bad).validate()
+            self.assertIn("wiki_tag", str(ctx.exception))
+
     def test_is_owner_only_must_be_true(self) -> None:
         with self.assertRaises(ValueError) as ctx:
             make_settings(is_owner_only=False).validate()
@@ -52,6 +83,11 @@ class SettingsValidationTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             make_settings(edit_comment="").validate()
         self.assertIn("edit_comment", str(ctx.exception))
+
+    def test_empty_user_agent_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            make_settings(user_agent="").validate()
+        self.assertIn("user_agent", str(ctx.exception))
 
     def test_safe_and_unsafe_tag_lists_are_mutually_exclusive(self) -> None:
         with self.assertRaises(ValueError) as ctx:
@@ -75,9 +111,8 @@ class SettingsValidationTest(unittest.TestCase):
             make_settings(log_level=9).validate()
         self.assertIn("log_level", str(ctx.exception))
 
-    def test_enable_cangjie_fails_loudly_instead_of_being_ignored(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            make_settings(enable_cangjie=True).validate()
+    def test_enable_cangjie_is_accepted(self) -> None:
+        make_settings(enable_cangjie=True).validate()
 
     def test_page_id_end_lower_than_start_is_rejected(self) -> None:
         with self.assertRaises(ValueError) as ctx:

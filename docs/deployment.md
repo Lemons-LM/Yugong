@@ -18,7 +18,7 @@ Minimum configuration for robot mode:
 
 ```toml
 # Wiki connection
-api_endpoint = "https://your-wiki.example.com/"   # the directory holding api.php, with trailing slash
+api_endpoint = "https://your-wiki.example.com/"   # directory holding api.php, or the api.php URL itself
 user_agent = "Yugong/1.0 (YourName; contact@example.com)"
 is_owner_only = true                               # must stay true: only OAuth is supported
 bot_name = "YourBotName"
@@ -37,6 +37,7 @@ category = "Pages needing cleanup"   # members of Category:Pages needing cleanup
 bypass_confirm_settings = true
 submit_changes = true
 edit_comment = "Bot: automated cleanup (Yugong)"
+enable_cangjie = false              # true = NoteTA/CGroup-based zh-cn text conversion
 mail_recipients = ["admin@example.com"]
 
 # Safety limits
@@ -70,6 +71,18 @@ pip install -r requirements.txt
 ```
 
 ## Running
+
+### Read-only preflight
+
+Before configuring a page selector, check that this machine can reach the wiki:
+
+```bash
+python main.py --check
+```
+
+It validates `api_endpoint`, requires `MW_OAUTH_TOKEN`, queries `siteinfo` and
+exits. It never edits anything. A WAF/CAPTCHA block is reported here instead of
+showing up as a confusing page-processing failure later.
 
 ### One-shot run
 
@@ -117,7 +130,10 @@ The resolved todo list is merged with the pages still queued in `cache/<wiki_tag
 - **Diff limit.** Edits whose changed-character count exceeds `max_acceptable_diff_size` are skipped and reported, and the page stays in the todo list.
 - **Suppression check.** Every 20 API requests, the bot checks `User:<bot_name>/block` on the wiki. If the revision has changed (indicating a block), it emails the configured recipients and exits immediately.
 - **Edit comments.** Every edit is tagged with `edit_comment`. Set this to something descriptive so other editors can identify the bot's edits.
-- **Cangjie is not implemented.** `enable_cangjie = true` fails loudly at validation time rather than silently doing nothing.
+- **Cangjie.** `enable_cangjie = true` converts visible article text to `zh-cn` using the page's NoteTA/CGroup rules, then OpenCC `t2s` (`opencc` is now installed by `requirements.txt`). Pages without NoteTA still get the OpenCC script conversion; template names/parameters, category/file links, `-{...-}`, URLs and code tags are left intact. The normal diff limit still applies. Because NoteTA-less pages have no regional-term guard, review the first run before enabling it wiki-wide, especially for Hong Kong/Macau/Taiwan-heavy content.
+- **Lint / obsolete syntax.** `lint_fixes` handles `<font>`, simple `<center>` (via `{{center}}`), `<big>/<tt>/<strike>`, `align/valign/width/height/bgcolor/border` on HTML and wikitable cells, self-closing non-void tags, empty headings, duplicate bare image sizes, and empty category sort keys. Template-caused lint errors and the riskier categories listed in the extension docstring remain manual work.
+- **Category policy / Void redirects.** `category_policy` applies the automatable QW:CAT rules (prefix, duplicate links, redundant sort keys, `{{catnav|auto=1}}`). `rm_void_template` preloads the 1,300+ `Template:Void` redirects and removes those no-op templates from pages. Reading `Category:` page content needs the bot account's read permission.
+- **Shipped template rules.** `template_rules/deprecated_city.toml` and `template_rules/deprecated_country_infobox.toml` replace the two pure deprecated wrappers. The country rule expands to a ~6.5k-character `{{Infobox country}}` call, so a run using it needs `max_acceptable_diff_size` well above the default 1000.
 - **Dry-run testing.** Before deploying to production, test against a small page set by using `linked_template` pointing to a test template, or test locally with dev mode.
 
 ## Alert emails

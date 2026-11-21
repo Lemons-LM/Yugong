@@ -4,18 +4,24 @@
 - [x] Package restructure — `models/` deleted (including `marks.py`, which moved to `utilities/marks.py`), `utils/` → `utilities/`
 - [x] Page selection — `page_id_start`/`page_id_end` (batched `pageids` queries, 50 per request), `linked_template` (`embeddedin`) and `category` (category members) are all implemented; the sources combine and deduplicate
 - [x] Safety checks enforced — `max_acceptable_diff_size`, `safe_tag_list`/`unsafe_tag_list` and `is_dangerous_tag_unacceptable` are all checked in the processing loop
-- [x] Wire up BotDB — `rm_void_template` caches template redirects and `category_handler` caches category redirects in `data/db/db.sqlite3`
-- [x] Write tests — 202 stdlib `unittest` cases under `tests/`, run with `python -m unittest discover`
+- [x] Wire up BotDB — `rm_void_template` caches template redirects and `category_handler` caches category redirects in `data/db/<wiki_tag>.sqlite3` (one file per wiki)
+- [x] Write tests — 318 stdlib `unittest` cases under `tests/`, run with `python -m unittest discover`
 - [x] Tag handling — `Wikitext.tags()` exposes the tags on a page and the processing loop enforces the `safe_tag_list`/`unsafe_tag_list` policy before running any step
 - [x] `check_allow_bots` in wiki.py — now fetches the user talk page *content* and fails closed when it cannot be read
 - [x] `settings.toml` — `is_owner_only` must be `true` (only OAuth supported); the file is validated before anything touches the wiki
+- [x] **Cangjie** — `enable_cangjie = true` enables `extensions/cangjie.py`: visible text is converted to `zh-cn` through the page's NoteTA/CGroup rules, then OpenCC `t2s`. Pages without NoteTA still get the OpenCC script conversion. Templates, parameters, category/file links, `-{...}-`, URLs and code tags are skipped
+- [x] **Ship template rules** — `template_rules/deprecated_city.toml` and `template_rules/deprecated_country_infobox.toml` replace the deprecated `{{城市}}` / `{{國家基礎資訊}}` wrappers with the wiki-defined `{{Infobox settlement}}` / `{{Infobox country}}` calls
+- [x] **Lint fixes** — `extensions/lint_fixes.py` handles obsolete tags, obsolete presentation attributes (including wikitable cells), self-closing non-void tags, empty headings, duplicate bare image sizes and empty category sort keys; simple `<center>` uses `{{center}}`
+- [x] **Category policy (QW:CAT)** — `extensions/category_policy.py` normalises the `Category:` prefix, removes duplicate category links and redundant sort keys, and adds `{{catnav|auto=1}}` to category pages
+- [x] **Void redirects** — `rm_void_template` preloads the 1,300+ redirects to `Template:Void`, follows redirect chains, and removes them without per-template API calls
 
 ## Pending
 
-- [ ] **Implement Cangjie (Chinese variant conversion)** — `enable_cangjie` is deliberately not wired up: setting it to `true` now raises `NotImplementedError` instead of silently doing nothing. `category_handler` uses OpenCC only when it happens to be installed (it is not a declared dependency) and only for category titles
 - [ ] **Login methods other than OAuth** — currently only the `MW_OAUTH_TOKEN` env var is supported (`MW_BOT_OAUTH_TOKEN` is a legacy fallback)
 - [ ] **Non-Qiuwen wikis** — `wiki_family`, `wiki_lang` and `wiki_domain` are configurable and the family is registered by `pwb_related.py`, but support has not been tested against a second wiki
-- [ ] **Ship template rules** — there are no `template_rules/*.toml` rules yet; `template_rules/example.toml.disabled` is a copy-me template that the loader deliberately ignores (it only globs `*.toml`)
+- [ ] **Deprecated templates that need parameter mapping** — only the two pure wrappers above are safe for the current rule engine. `Clickable button`, `Double image`, `Infobox DRCongo province`, `Infobox star`, `Markup`, `PBB`, `Ping2`, `Respell`, `Start rail box`, `Vertical images list`, `DisestcatCountry` and `DisestcatUSstate` need parameter-aware migrations or use modules, so they are deliberately not shipped as blind renames
+- [ ] **Lint categories left to humans** — `missing-end-tag`, `stripped-tag`, `misnested-tag` (usually template-caused), `deletable-table-tag`, image options other than duplicate sizes, `duplicate-id`, `wikilink-in-extlink`, `multi-colon-escape`, `pwrap-bug-workaround`, `tidy-whitespace-bug`, and `cellspacing`/`cellpadding`
+- [ ] **Category policy pieces left to humans** — whether a page belongs in a category, abstract-category inheritance, navigation-box consistency, and moving category links to the bottom of an article
+- [ ] **Category namespace read permission** — this token cannot read `Category:` page content on the target wiki (API `accessdenied`), so `{{catnav}}` insertion can only run where the bot account has that right
 - [ ] **Use the public helpers** — `calculate_length.py`, `signature_parser.py`, `sections_to_page.py` and `marks.py` all have unit tests but no in-repo callers yet
 - [ ] **Use the messaging helpers** — `Wiki.mass_message()`, `new_section()` and `get_sections()` are implemented but not called by the processing loop
-- [ ] **Write tag-transforming extensions** — the policy check inspects tags, but no shipped extension rewrites them

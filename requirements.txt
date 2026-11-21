@@ -4,6 +4,7 @@ charset-normalizer==3.4.4
 idna==3.11
 librt==0.7.5
 mwparserfromhell==0.7.2
+opencc==1.4.2
 mypy==1.19.1
 mypy_extensions==1.1.0
 packaging==26.0

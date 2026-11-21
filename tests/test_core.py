@@ -6,6 +6,8 @@ import contextlib
 import io
 import logging
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest import mock
 
@@ -94,6 +96,11 @@ class TemplateFormatterTest(unittest.TestCase):
         self.add_rule(names=["old"], template_level={"delete": True})
         self.assertEqual(self.apply("x{{old|a=1}}y"), "xy")
 
+    def test_deleting_an_outer_template_skips_detached_children(self) -> None:
+        """Regression: removing a parent then its child raised ValueError."""
+        self.add_rule(names=["Outer", "Inner"], template_level={"delete": True})
+        self.assertEqual(self.apply("a{{Outer|{{Inner|x=1}}}}b"), "ab")
+
     def test_replace_expands_positional_and_named_arguments(self) -> None:
         self.add_rule(names=["old"], template_level={"replace": "{{{1}}}-{{{foo|none}}}"})
         self.assertEqual(self.apply("{{old|a|foo=b}}"), "a-b")
@@ -101,6 +108,13 @@ class TemplateFormatterTest(unittest.TestCase):
     def test_replace_falls_back_to_the_default(self) -> None:
         self.add_rule(names=["old"], template_level={"replace": "{{{bar|fallback}}}"})
         self.assertEqual(self.apply("{{old|a}}"), "fallback")
+
+    def test_nested_default_arguments_do_not_crash_on_detached_nodes(self) -> None:
+        """Replacing the outer argument detaches the inner one from the snapshot."""
+        self.add_rule(
+            names=["old"], template_level={"replace": "{{{missing|{{{inner}}}}}}"}
+        )
+        self.assertEqual(self.apply("{{old|inner=X}}"), "X")
 
     def test_param_rename(self) -> None:
         self.add_rule(
@@ -183,6 +197,70 @@ class TemplateFormatterTest(unittest.TestCase):
     def test_rule_without_names_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             self.add_rule(names=[])
+
+    def test_invalid_parameter_name_regex_is_rejected_at_load_time(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(names=["old"], params=[{"names": ["[unclosed"]}])
+        self.assertIn("invalid regular expression", str(ctx.exception))
+
+    def test_rename_without_new_name_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(names=["old"], params=[{"names": ["year"], "rename": True}])
+        self.assertIn("requires 'new_name'", str(ctx.exception))
+
+    def test_invalid_condition_regex_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(
+                names=["old"],
+                params=[{
+                    "names": ["year"],
+                    "match": [{"condition": "([", "match": ".*", "replacement": "x"}],
+                }],
+            )
+        self.assertIn("invalid regular expression", str(ctx.exception))
+
+    def test_match_without_condition_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(
+                names=["old"],
+                params=[{"names": ["year"], "match": [{"match": ".*", "replacement": "x"}]}],
+            )
+        self.assertIn("condition", str(ctx.exception))
+
+    def test_apply_websites_must_be_a_string_list(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(names=["old"], apply_websites="example.com")
+        self.assertIn("apply_websites", str(ctx.exception))
+
+    def test_names_must_be_a_list_not_a_string(self) -> None:
+        """``names = "xy"`` used to register one-character rules X and Y."""
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(names="xy", template_level={"delete": True})
+        self.assertIn("list of strings", str(ctx.exception))
+
+    def test_introduction_must_be_a_string(self) -> None:
+        with self.assertRaises(ValueError):
+            with contextlib.redirect_stdout(io.StringIO()):
+                formatter._add_rule({"names": ["x"], "introduction": 1}, "broken.toml")
+
+    def test_get_ruleset_rejects_apply_websites_before_filtering(self) -> None:
+        """A string value used to be iterated per character and skipped."""
+        from src.Yugong.core import template_formatter as tf_module
+
+        with TemporaryDirectory() as tmp:
+            rules = Path(tmp) / "template_rules"
+            rules.mkdir()
+            (rules / "bad.toml").write_text(
+                'names = ["X"]\n'
+                'introduction = "bad"\n'
+                'apply_websites = "example.com"\n'
+                '[template_level]\ndelete = true\n',
+                encoding="utf-8",
+            )
+            with mock.patch.object(tf_module, "PROJECT_ROOT", Path(tmp)):
+                with self.assertRaises(ValueError) as ctx:
+                    formatter.get_ruleset()
+            self.assertIn("apply_websites", str(ctx.exception))
 
     def test_rule_without_introduction_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

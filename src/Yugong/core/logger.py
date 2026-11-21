@@ -90,6 +90,11 @@ class BotLogger:
             console_handler.setLevel(logging.WARNING)
             self._logger.addHandler(console_handler)
 
+        # Several modules build ``BotLogger(...)`` directly instead of going
+        # through get_logger(); register them too so configure_logging() can
+        # actually change their level.
+        _LOGGERS.setdefault(name, self)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._logger, name)
 

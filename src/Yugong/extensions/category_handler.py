@@ -1,13 +1,18 @@
-"""Normalise category links: convert to zh-Hans and follow category redirects.
+"""Normalise category links using the page's ``{{NoteTA}}`` conversion data.
 
-When a category name differs from its Simplified-Chinese form, the extension
-looks up the zh-Hans category page.  If that page carries a
-``{{分类重定向|目标分类|分类索引}}`` template, the link on the article is
-rewritten to the redirect target.
+Qiuwen Baike articles declare cross-strait terminology with ``{{NoteTA}}`` and
+public conversion groups (``Module:CGroup/*`` / ``Template:CGroup/*``).  This
+extension reads that data from the page and rewrites category links to the
+Mainland (``zh-cn``) name when the converted category exists on the wiki, then
+follows ``{{分类重定向|...}}`` templates.
 
-Lookups are cached in the ``category`` table of :mod:`src.Yugong.core.bot_db`,
-so each category is resolved once per machine.  OpenCC is optional: without it
-the redirect lookup is simply skipped.
+The conversion rules are parsed from the wiki's own NoteTA/CGroup data — no
+built-in term list.  Group data is cached in the ``cgroup`` table of
+:mod:`src.Yugong.core.bot_db`; category existence/redirect answers are cached
+in the ``category`` table.  Both databases are per-wiki.
+
+OpenCC is still used as a script-level fallback (traditional → simplified) and
+is optional: without it, only the NoteTA/CGroup terminology rules apply.
 """
 
 from __future__ import annotations
@@ -21,7 +26,13 @@ from src.Yugong.core.bot_db import bot_db
 from src.Yugong.core.logger import utilities_logger
 from src.Yugong.core.wiki import wiki
 from src.Yugong.core.wikitext import Wikitext
+from src.Yugong.utilities.cgroup_cache import resolve_note_ta_rules
 from src.Yugong.utilities.mark_job_intro import intro, job
+from src.Yugong.utilities.note_ta import (
+    apply_replacements,
+    build_replacements,
+    parse_note_ta,
+)
 
 #: bot_db table holding category redirect information.
 CATEGORY_TABLE: str = "category"
@@ -55,8 +66,9 @@ def _to_zh_hans(text: str) -> str:
         except ImportError:
             if not _converter_missing_reported:
                 utilities_logger.warning(
-                    "opencc is not installed; category names will not be "
-                    "converted to zh-Hans (pip install opencc)"
+                    "opencc is not installed; category names will only use the "
+                    "wiki's NoteTA/CGroup rules, not OpenCC script conversion "
+                    "(pip install opencc)"
                 )
                 _converter_missing_reported = True
             return text
@@ -101,51 +113,100 @@ def _rewrite_category_link(link: Any, target: str) -> None:
     link.title = _category_prefix(original_title) + target
 
 
+def _resolve_category(name: str) -> str | None:
+    """Return the final name for ``Category:<name>``, or ``None`` if missing.
+
+    A category that exists is its own target; one carrying
+    ``{{分类重定向|...}}`` resolves to the redirect target.  The answer is cached
+    by the *queried* name, which is the converted candidate, so pages with
+    different NoteTA groups cannot poison each other's cache.
+    """
+    cached = bot_db.search(CATEGORY_TABLE, {"title": name})
+    if cached:
+        target = cached[0].get("target")
+        return str(target) if target else None
+
+    cat_page = pywikibot.Page(wiki.site, f"Category:{name}")
+    try:
+        if not cat_page.exists():
+            return None
+    except pywikibot.exceptions.APIError as exc:
+        # Existence unknown: do not risk rewriting to a red link.
+        utilities_logger.warning(f"Could not check Category:{name}: {exc}")
+        return None
+
+    try:
+        redirect_target, index = _parse_redirect_template(cat_page.text)
+    except pywikibot.exceptions.NoPageError:
+        return None
+    except pywikibot.exceptions.APIError as exc:
+        # The category exists but this account may not read its content (some
+        # wikis restrict the Category namespace).  Treat it as an ordinary
+        # category: the converted name is still the right link target.
+        utilities_logger.info(
+            f"Category:{name} exists but its text is not readable ({exc}); "
+            "treating it as a plain category"
+        )
+        redirect_target, index = None, ""
+
+    final = redirect_target or name
+    bot_db.insert(CATEGORY_TABLE, {
+        "title": name,
+        "target": final,
+        "sort_index": index,
+    })
+    return final
+
+
 @job(needs_wiki=True)
 def category_handler_job(wikitext: Wikitext) -> None:
     """Process every category link on the page."""
-    for link in wikitext.wikilinks():
+    links = [
+        link
+        for link in wikitext.wikilinks()
+        if any(
+            str(link.title).strip().lower().startswith(prefix)
+            for prefix in _CATEGORY_PREFIXES
+        )
+    ]
+    if not links:
+        return
+
+    # Read NoteTA from the text as it was loaded, before other jobs may have
+    # removed the template.
+    source = wikitext.original_content or str(wikitext)
+    config = parse_note_ta(source)
+    rules = resolve_note_ta_rules(config, wiki_obj=wiki, db=bot_db)
+    replacements = build_replacements(rules)
+
+    for link in links:
         original_title = str(link.title).strip()
-        lowered = original_title.lower()
-
-        if not any(lowered.startswith(prefix) for prefix in _CATEGORY_PREFIXES):
-            continue
-
         cat_name = _strip_category_prefix(original_title).strip()
         if not cat_name:
             continue
 
-        cached = bot_db.search(CATEGORY_TABLE, {"title": cat_name})
-        if cached:
-            target = cached[0].get("target")
-            if target and target != cat_name:
-                _rewrite_category_link(link, str(target))
+        converted = apply_replacements(cat_name, replacements)
+        converted = _to_zh_hans(converted).strip()
+
+        # Nothing to do when the wiki's own rules leave the name unchanged.
+        # This also avoids touching the Category namespace for every link.
+        if not converted or converted == cat_name:
             continue
 
-        zh_hans_name = _to_zh_hans(cat_name)
-        target_cat = cat_name
-        cat_index = ""
+        target = _resolve_category(converted)
 
-        if zh_hans_name and zh_hans_name != cat_name:
-            cat_page = pywikibot.Page(wiki.site, f"Category:{zh_hans_name}")
-            redirect_target: str | None = None
-            try:
-                redirect_target, cat_index = _parse_redirect_template(cat_page.text)
-            except pywikibot.exceptions.NoPageError:
-                redirect_target = None
-            if redirect_target:
-                target_cat = redirect_target
+        # If the converted name does not exist, fall back to the name on the
+        # page (which may itself be a category redirect).
+        if target is None:
+            target = _resolve_category(cat_name)
 
-        bot_db.insert(CATEGORY_TABLE, {
-            "title": cat_name,
-            "target": target_cat,
-            "sort_index": cat_index,
-        })
-
-        if target_cat != cat_name:
-            _rewrite_category_link(link, target_cat)
+        if target and target != cat_name:
+            _rewrite_category_link(link, target)
 
 
 @intro
 def category_handler_intro() -> str:
-    return "Category handler: zh-Hans conversion + redirect following (DB cached)"
+    return (
+        "Category handler: NoteTA/CGroup terminology + zh-Hans + redirects "
+        "(DB cached)"
+    )

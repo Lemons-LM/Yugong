@@ -55,6 +55,9 @@ src/Yugong/
 │   ├── path_helper.py      # PROJECT_ROOT resolver
 │   ├── link.py             # wiki link helpers, get_user_talk(), get_username()
 │   ├── pwb_related.py      # family registration for pywikibot
+│   ├── urls.py             # api_endpoint -> base URL / api.php / scriptpath
+│   ├── note_ta.py          # parse {{NoteTA}}, Module:CGroup and Template:CGroup data
+│   ├── cgroup_cache.py     # fetch/parse/cache CGroup data in the per-wiki DB
 │   ├── check_heartbeat.py  # daily-run dedup check
 │   ├── check_same_website.py # domain matching for template rules
 │   ├── lock.py             # PID-based process lock in data/lock
@@ -65,11 +68,14 @@ src/Yugong/
 │   ├── sections_to_page.py # combine section nodes into page text
 │   └── record_start_time.py # UTC+8 start-time recorder
 └── extensions/             # shipped @job/@intro functions
+    ├── cangjie.py          # NoteTA/CGroup + OpenCC visible text -> zh-cn (needs_wiki)
+    ├── category_handler.py # category names -> NoteTA/CGroup + redirects (needs_wiki)
+    ├── category_policy.py  # QW:CAT prefix / sort key / catnav rules
     ├── example.py          # deliberate no-op, copy this to start a new extension
     ├── fix_cite_template.py
+    ├── lint_fixes.py       # obsolete tags/attrs, self-closing, headings, image sizes
     ├── rm_undefined_refs.py
-    ├── rm_void_template.py # @job(needs_wiki=True)
-    └── category_handler.py # @job(needs_wiki=True)
+    └── rm_void_template.py # Void alias preload + redirect chains (needs_wiki)
 ```
 
 ## Key patterns
@@ -160,8 +166,10 @@ The `Wiki` class wraps pywikibot with several key behaviors:
 - **OAuth only.** The documented variable is `MW_OAUTH_TOKEN`; `MW_BOT_OAUTH_TOKEN` is accepted as a legacy fallback and the documented name takes precedence.
 - **pywikibot configuration.** `apply_pywikibot_config()` pushes `user_agent_format`, `cosmetic_changes`, `minthrottle`, `retry_max` (= `request_max_tries`) and `socket_timeout` into pywikibot. pywikibot's default `retry_max = 120` used to turn an unreachable wiki into a multi-minute hang.
 - **Family registration.** pywikibot does not auto-register `Family` subclasses, so `pwb_related.register_family()` inserts an instance into `family.Family._families` before `Site` is created. Its `name`/`langs` come from `wiki_family`/`wiki_lang`/`wiki_domain`, and `isPublic(self, code)` uses the signature pywikibot actually calls.
-- **Retrying raw API access.** `Wiki._api_get` / `Wiki.api_query` honour `request_max_tries`, `request_timeout` and an exponential backoff. A non-JSON body (bot-protection challenge, login form, HTML error) is retried and then reported; the method returns `None` instead of raising.
-- **Tick/suppression check.** Every 20 API requests (`SUPPRESSION_CHECK_INTERVAL`), `tick()` calls `_check_suppressed_action()`, which queries `User:<bot_name>/block` for its revision id. The first run stores the id in `data/bot/heartbeat`; a later change means suppression, so the bot emails the recipients and calls `sys.exit(1)`. A broken or unreachable check only logs a warning.
+- **Endpoint normalisation.** `utilities/urls.py` accepts `api_endpoint` either as the directory holding `api.php` or as the `api.php` URL itself. `Wiki.api_url` / `Wiki.base_url` derive the two forms; `pwb_related` derives pywikibot's host and `scriptpath` from the same value, so a wiki installed under `/w/` works too.
+- **Retrying raw API access.** `Wiki._api_get` / `Wiki.api_query` honour `request_max_tries`, `request_timeout` and an exponential backoff. A non-JSON body (bot-protection challenge, login form, HTML error) is retried and then reported; the method returns `None` instead of raising. A WAF/CAPTCHA page is detected and reported once, without retries.
+- **Edit-conflict protection.** `_process_single_page` remembers the revision id it read and passes it as `baserevid` to `Page.save()`, so a concurrent edit produces an `EditConflictError` instead of being overwritten. `cosmetic_changes` is disabled both in pywikibot's config and per save, because it would rewrite text after the diff-size check.
+- **Tick/suppression check.** Every 20 API requests (`SUPPRESSION_CHECK_INTERVAL`), `tick()` calls `_check_suppressed_action()`, which queries `User:<bot_name>/block` for its revision id. The first run stores the id in `data/bot/heartbeat_<wiki_tag>`; a later change means suppression. If the page is absent at first check, the file stores `<absent>` — its later **creation** is itself the stop signal (so the first edit works). Suppression emails the recipients and calls `sys.exit(1)`. A broken or unreachable check only logs a warning.
 - **HTTP monkey-patch.** `guarded_request` wraps `http.session.request` to inject OAuth headers and call `wiki.tick()` on every pywikibot HTTP request, so the kill switch also covers pywikibot's internal calls.
 - **Bot opt-out.** `check_allow_bots()` reads the user talk page **content**, not its title, and fails closed (`False`) when the page cannot be read.
 - **Unused helpers.** `mass_message()`, `new_section()` and `get_sections()` are implemented but not called by the processing loop.
@@ -169,10 +177,35 @@ The `Wiki` class wraps pywikibot with several key behaviors:
 ## Safety and operational behaviour
 
 - **Run lock** (`utilities/lock.py`): a PID written to `data/lock`. A lock whose PID is no longer alive is reclaimed, so a crash does not block the next run.
-- **Daily heartbeat** (`utilities/check_heartbeat.py`, `data/bot/heartbeat_daily`): with `enable_heartbeat = true`, a second run on the same UTC day logs, emails and stops. Reading and recording are separate functions (`heartbeat_matches`, `record_heartbeat`) and the day is only claimed *after* the site connects and a non-empty todo list has been built, so a failed connection does not block a retry later the same day.
+- **Daily heartbeat** (`utilities/check_heartbeat.py`, `data/bot/heartbeat_daily_<wiki_tag>`): with `enable_heartbeat = true`, a second run on the same UTC day logs, emails and stops. The file is per-wiki so two wikis do not overwrite each other's claim. Reading and recording are separate functions (`heartbeat_matches`, `record_heartbeat`) and the day is only claimed *after* the site connects and a non-empty todo list has been built, so a failed connection does not block a retry later the same day.
 - **Tag policy**: `unsafe_tag_list` is a deny-list, `safe_tag_list` an allow-list, and `validate()` rejects configuring both. A forbidden tag aborts the whole run via `SafetyAbort` when `is_dangerous_tag_unacceptable = true` (the default); otherwise the page is skipped and reported.
 - **Diff limit**: `diff_size()` uses `difflib.SequenceMatcher` to count changed characters before anything is submitted.
 - **Todo persistence**: `cache/<wiki_tag>.json` stores `url` and `todo`. A cached URL that disagrees with `api_endpoint` aborts with a "change wiki_tag" message.
+- **NoteTA / CGroup category conversion**: `category_handler` parses the page's `{{NoteTA}}` (inline rules, `T=` title rules, `G1`..`G30` groups) and, for each group, loads `Module:CGroup/<name>` first and `Template:CGroup/<name>` second, exactly like `Module:NoteTA`. `note_ta.py` parses the wiki's Lua/template data (including `import` and `require` wrappers); `cgroup_cache.py` stores the result in the per-wiki `cgroup` table for 7 days. Rules are applied to category names for the `zh-cn` target, with `zh-hans`/`zh` fallback, and the link is rewritten only when the converted `Category:` page exists; otherwise the original name (and its `{{分类重定向}}`) is kept. No term list is built into the code.
+- **Cangjie** (`extensions/cangjie.py`, `enable_cangjie = true`): applies the same NoteTA/CGroup rules to visible article text, then OpenCC `t2s` (now a declared dependency). `note_ta.apply_replacements()` is a **single longest-match pass** with target terms pre-empting shorter sources, so a rule such as `胞器 => 细胞器` cannot turn an existing `细胞器` into `细细胞器`. The walker skips template names/parameters, category/file links, `-{...}-`, URLs, comments and `nowiki`/`code`/`pre`/`math`-style tags. Pages without NoteTA still get the OpenCC script-level conversion; there are simply no page-specific terminology rules. The normal diff-size check still applies.
+- **Lint fixes** (`extensions/lint_fixes.py`): safe, idempotent transformations for the QW:TODO obsolete-syntax list and common Linter categories. It converts `<font>` (color/face only), `<center>` (to `{{center}}` when simple, otherwise `<div>`), `<big>`, `<tt>`, `<strike>`; folds `align`/`valign`/`width`/`height`/`bgcolor`/`border` into `style` on HTML tags and wikitable cells; pairs self-closing non-void tags; removes empty headings and duplicate bare image sizes; and removes only empty category sort keys. It walks template **argument values** (so a template page's own `<font>` inside `{{Infobox|...}}` is fixed) but never template/parameter names, and skips `nowiki`/`code`/`pre`-style contents plus the risky categories listed in the module docstring.
+- **Category policy** (`extensions/category_policy.py`): applies the automatable parts of `QW:CAT` — canonical `Category:` prefix, one link per category, redundant sort-key removal, and `{{catnav|auto=1}}` on category pages that lack it. Reading `Category:` page content needs the bot account's read permission; the current test token gets `accessdenied` there.
+- **Void redirects** (`extensions/rm_void_template.py`): preloads every redirect to `Template:Void` (1,300+ titles) into the per-wiki `template` table once a week, follows redirect chains up to 5 levels, and removes the no-op templates without per-template API requests.
+- **Shipped template rules**: `template_rules/deprecated_city.toml` and `template_rules/deprecated_country_infobox.toml` are generated from the wiki's own deprecated wrapper templates (`Template:城市`, `Template:國家基礎資訊`) and replace invocations with the exact `{{Infobox settlement}}` / `{{Infobox country}}` mapping. The country replacement is large (about 6.5k chars), so a run that uses it needs `max_acceptable_diff_size` above the default 1000.
+
+### QW:TODO / LintErrors triage
+
+The wiki's `Template:Deprecated template` has 208 transclusions (including `/doc` pages). Only two are pure wrappers that the rule engine can expand exactly: `城市` and `國家基礎資訊`. The other declared replacements (`Clickable button`, `Demography 4col`, `DisestcatCountry`, `DisestcatUSstate`, `Double image`, `Infobox DRCongo province`, `Infobox star`, `Markup`, `PBB`, `Ping2`, `Respell`, `Start rail box`, `Vertical images list`) use modules, different parameter models, or custom markup and are left for a parameter-aware migration.
+
+`QW:TODO` technical items mapped to the bot:
+
+| QW:TODO item | Status |
+|--------------|--------|
+| 清除过时语法 (`font`, `center`, `align`, `valign`, `width`, `height`, `bgcolor`, `border`) | implemented in `lint_fixes` |
+| 清理条目正文底部分类中的手动分类参数 | `category_policy` removes empty, page-title, and deprecated/full-width punctuation keys; meaningful keys are kept |
+| 简繁/地区词转换 | implemented as `cangjie` (NoteTA/CGroup first, then OpenCC; NoteTA-less pages use OpenCC only) |
+| QW:CAT `Category:` prefix / duplicate links / sort keys / `catnav` | implemented in `category_policy` |
+| `cellspacing` / `cellpadding` | not auto-fixed (no safe local CSS substitute) |
+| `.w` / `!w` / `-w` series | not auto-fixed (needs `nowrap begin/end` pairing or a deliberate `{{·}}` rewrite) |
+| ISBN without `{{ISBN}}` | not auto-fixed (regex false positives) |
+| Rail/bus module data, script errors, policy/manual work | out of scope for this bot |
+
+The Linter categories implemented are listed in `extensions/lint_fixes.py`; duplicate bare image sizes and empty headings are handled, while `missing-end-tag`, `stripped-tag`, `misnested-tag`, `deletable-table-tag`, other image options, `duplicate-id`, `wikilink-in-extlink`, `multi-colon-escape`, `pwrap-bug-workaround` and `tidy-whitespace-bug` are deliberately left to humans because the safe fix depends on context or belongs in a transcluded template.
 - **Reporting**: skipped and failed pages go to `utilities/reporter.py` (`reporter.add(module, issue)`), are printed at the end of the run, and are emailed when `mail_recipients` and `MAIL_ACCOUNT`/`MAIL_PASSWORD` are set.
 
 ## Adding a new feature
@@ -191,7 +224,7 @@ Where to put things:
 
 ## Testing
 
-The suite is plain `unittest` — 202 test cases under `tests/`, no pytest dependency:
+The suite is plain `unittest` — 318 test cases under `tests/`, no pytest dependency:
 
 ```bash
 python -m unittest discover
@@ -206,6 +239,8 @@ mypy
 Coverage includes:
 
 - extension input/output behaviour (`test_extensions.py`) and template rules (`test_core.py`)
+- NoteTA/CGroup parsing, single-pass conversion and the CGroup cache (`test_noteta.py`)
+- Cangjie protected-region handling (`test_cangjie.py`), lint/obsolete-syntax fixes (`test_lint_fixes.py`), category-policy sort keys/catnav (`test_category_policy.py`) and the `Template:Void` alias preload/chain logic (`test_extensions.py`)
 - the `@job`/`@intro` registries and `Marks` (`test_registry.py`)
 - settings loading and every `validate()` rule (`test_settings.py`)
 - pure helpers: `diff_size`, `pageid_batches`, `disallowed_tags`
@@ -214,12 +249,13 @@ Coverage includes:
 - the wiki wrapper's retry, OAuth and kill-switch behaviour (`test_wiki.py`)
 - subprocess tests that run the real `main.py` (`test_entrypoints.py`)
 
-`tests/support.py` provides `make_wikitext`, `run_job` and an in-memory `FakeBotDB`, so the extension tests never touch the network or a database. The `BotDB` tests create a throwaway SQLite file in a temporary directory instead of using `data/db/db.sqlite3`.
+`tests/support.py` provides `make_wikitext`, `run_job` and an in-memory `FakeBotDB`, so the extension tests never touch the network or a database. The `BotDB` tests create a throwaway SQLite file in a temporary directory instead of using `data/db/<wiki_tag>.sqlite3`.
 
 ## Dependency tiers
 
 ```
 Wikitext + rules:   mwparserfromhell, toml
+Chinese conversion: opencc (Cangjie and category_handler script-level layer)
 Wiki:               pywikibot (which itself uses requests)
 Manual mode:        pyperclip (imported by do_jobs at module level)
 Development:        mypy, types-requests
@@ -231,9 +267,10 @@ Both entry points pull in the whole set: production obviously needs the wiki sta
 
 ## Known technical debt
 
-- **Cangjie / Chinese variant conversion** — not implemented. `enable_cangjie = true` raises `NotImplementedError` during validation so it can never silently do nothing. `category_handler` converts category titles through OpenCC only when OpenCC is installed, and OpenCC is not a declared dependency.
+- **Cangjie / Chinese variant conversion** — implemented in `extensions/cangjie.py` via NoteTA/CGroup plus OpenCC (`opencc` is a declared dependency). Pages without NoteTA get OpenCC-only script conversion; template parameters are never touched; edits remain subject to `max_acceptable_diff_size`.
 - **Non-Qiuwen wikis** — `wiki_family`, `wiki_lang` and `wiki_domain` make the family configurable, but support has not been tested against a second wiki.
-- **No shipped template rules** — `template_rules/` contains only `example.toml.disabled`; the loader ignores it on purpose.
+- **Only two deprecated-template rules** — the rule engine can safely replace the two pure wrappers (`城市`, `國家基礎資訊`). The other 13 templates with a `new=` target need parameter-aware migrations, use modules, or are custom markup; they are listed in `TODO.md` and are not shipped as blind renames.
+- **Lint categories left to humans** — `missing-end-tag`, `stripped-tag`, `misnested-tag` (usually template-caused), `deletable-table-tag`, image options other than duplicate sizes, `duplicate-id`, `wikilink-in-extlink`, `multi-colon-escape`, `pwrap-bug-workaround`, `tidy-whitespace-bug`, and `cellspacing`/`cellpadding` are intentionally not auto-fixed.
 - **Unused public helpers** — `calculate_length.py`, `signature_parser.py`, `sections_to_page.py` and `marks.py` have no in-repo callers (all four are covered by unit tests).
 - **Unused Wiki helpers** — `mass_message()`, `new_section()` and `get_sections()` are implemented but never called by the processing loop.
 - **Only OAuth login** — bot password login is not supported.

@@ -34,6 +34,10 @@ class Manifest:
             self.logger.warning(f"{self.file} is not valid JSON ({exc}); starting empty")
             self.save(data={})
             return {}
+        except (OSError, UnicodeDecodeError) as exc:
+            self.logger.warning(f"{self.file} is unreadable ({exc}); starting empty")
+            self.save(data={})
+            return {}
 
         if not isinstance(data, dict):
             self.logger.warning(
@@ -55,11 +59,19 @@ class Manifest:
         if parent:
             os.makedirs(parent, exist_ok=True)
 
+        # Write to a sibling file and replace atomically: a crash halfway
+        # through must not leave a truncated todo list behind.
+        temporary = f"{self.file}.tmp"
         try:
-            with open(self.file, "w", encoding="utf-8") as f:
+            with open(temporary, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(temporary, self.file)
         except OSError as exc:
             self.logger.error(f"Failed to save {self.file}: {exc}")
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
             return
 
         self.data = data

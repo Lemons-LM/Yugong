@@ -81,13 +81,60 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Dev mode: do not apply template_rules/*.toml",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Read-only preflight: validate the endpoint/OAuth token, query "
+            "siteinfo and exit without editing anything"
+        ),
+    )
     return parser
+
+
+def check_connection() -> int:
+    """Validate the connection settings and call the API read-only.
+
+    Deliberately does not require a page selector: this is the "can this
+    machine talk to the wiki at all?" command.  Never writes to the wiki.
+    """
+    from src.Yugong.core.settings import settings
+    from src.Yugong.core.wiki import get_oauth_token, wiki
+    from src.Yugong.utilities.urls import api_url, is_supported_url
+
+    if not is_supported_url(settings.api_endpoint):
+        raise ValueError(
+            f"api_endpoint is not an absolute http(s) URL: {settings.api_endpoint!r}"
+        )
+    if not get_oauth_token():
+        raise ValueError(
+            "MW_OAUTH_TOKEN (or MW_BOT_OAUTH_TOKEN) is not set in the environment"
+        )
+
+    wiki.api_endpoint = settings.api_endpoint
+    data = wiki.api_query({"action": "query", "meta": "siteinfo", "format": "json"})
+    if data is None:
+        raise RuntimeError(
+            f"Could not read {api_url(settings.api_endpoint)}; see logs/wiki.log "
+            "(a WAF/CAPTCHA challenge is reported there)"
+        )
+    if "error" in data:
+        raise RuntimeError(f"The API rejected the request: {data['error']}")
+
+    general = data.get("query", {}).get("general", {})
+    sitename = general.get("sitename") if isinstance(general, dict) else None
+    print(f"OK: connected to {sitename or 'the wiki'} at {api_url(settings.api_endpoint)}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
+        if args.check and args.dev:
+            raise ValueError("--check and --dev cannot be used together")
+        if args.check:
+            return check_connection()
         if args.dev:
             from src.Yugong.processor.dev_mode import run_dev_mode
 

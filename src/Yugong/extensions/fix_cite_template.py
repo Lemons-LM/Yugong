@@ -52,10 +52,22 @@ def _rebuild(template: mph.wikicode.Template) -> str:
     return "".join(parts)
 
 
+def _still_attached(wikitext: Wikitext, template: mph.wikicode.Template) -> bool:
+    """Return whether *template* is still in the page tree.
+
+    ``wikitext.templates()`` is a snapshot.  Replacing an outer ``Cite*``
+    template detaches any ``Cite*`` nested inside it, and replacing a detached
+    node raises ``ValueError``.
+    """
+    return any(node is template for node in wikitext.wikitext.filter_templates())
+
+
 @job
 def fix_cite_template_job(wikitext: Wikitext) -> None:
     """Rewrite every ``Cite*`` template that has anonymous parameters."""
     for template in wikitext.templates():
+        if not _still_attached(wikitext, template):
+            continue
         if not _CITE_RE.match(str(template.name).strip()):
             continue
         if not _needs_escape(template):

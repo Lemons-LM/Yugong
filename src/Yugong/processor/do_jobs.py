@@ -18,7 +18,10 @@ Flow::
 from __future__ import annotations
 
 import difflib
+import hashlib
 import os
+import re
+import sys
 import webbrowser
 from urllib.parse import quote
 
@@ -42,12 +45,31 @@ from src.Yugong.utilities.lock import lock, unlock
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
 from src.Yugong.utilities.record_start_time import record_start_time
 from src.Yugong.utilities.reporter import reporter
+from src.Yugong.utilities.urls import base_url as normalize_base_url
 
 #: How many page ids to ask for in one API call when sweeping a page-id range.
 PAGEID_BATCH_SIZE: int = 50
 
-#: File remembering which UTC day the bot last ran (unattended runs only).
+#: Above this combined size the exact character-level diff becomes too slow
+#: (it is O(n²); 40k chars already takes seconds).  Larger pages use a
+#: line-based estimate instead, which is linear in the number of lines and
+#: over-estimates the change, so it can only reject more edits, never accept a
+#: too-large one.
+EXACT_DIFF_CHARS: int = 20_000
+
+#: Absolute hard cap: refuse to even load/diff absurdly large pages.
+MAX_DIFF_CHARS: int = 5_000_000
+
+#: Base name for the file remembering which UTC day the bot last ran.  The
+#: effective file is suffixed with ``wiki_tag`` so two wikis cannot overwrite
+#: each other's daily claim.
 DAILY_HEARTBEAT_FILE: str = os.path.join(PROJECT_ROOT, "data", "bot", "heartbeat_daily")
+
+
+def daily_heartbeat_file() -> str:
+    """Return the per-wiki daily heartbeat path."""
+    tag = re.sub(r"[^A-Za-z0-9._-]", "_", str(settings.wiki_tag)) or "wiki"
+    return f"{DAILY_HEARTBEAT_FILE}_{tag}"
 
 
 class SafetyAbort(RuntimeError):
@@ -60,15 +82,33 @@ def diff_size(old: str, new: str) -> int:
     """Characters added, removed or rewritten between two revisions.
 
     Used to enforce ``max_acceptable_diff_size`` before anything is submitted.
+    The exact character-level diff is quadratic, so large pages fall back to a
+    line-based estimate that over-counts rather than under-counts.
     """
     if old == new:
         return 0
 
-    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    if len(old) + len(new) <= EXACT_DIFF_CHARS:
+        matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+        total = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag != "equal":
+                total += max(i2 - i1, j2 - j1)
+        return total
+
+    old_lines = old.splitlines(keepends=True)
+    new_lines = new.splitlines(keepends=True)
+    # Very line-heavy pages get autojunk so the diff stays fast; it can only
+    # inflate the estimate, which is the safe direction.
+    autojunk = len(old_lines) + len(new_lines) > 20_000
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=autojunk)
     total = 0
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag != "equal":
-            total += max(i2 - i1, j2 - j1)
+        if tag == "equal":
+            continue
+        old_chars = sum(len(line) for line in old_lines[i1:i2])
+        new_chars = sum(len(line) for line in new_lines[j1:j2])
+        total += max(old_chars, new_chars)
     return total
 
 
@@ -82,6 +122,20 @@ def pageid_batches(start: int, end: int, *, size: int = PAGEID_BATCH_SIZE) -> li
         list(range(head, min(head + size, end + 1)))
         for head in range(start, end + 1, size)
     ]
+
+
+def strip_namespace_prefix(value: str, namespace: str) -> str:
+    """Drop a ``Namespace:`` prefix from a settings value.
+
+    ``linked_template``/``category`` are documented without the prefix, but
+    users routinely paste ``Template:Navbox`` or ``Category:Foo``; accepting
+    both avoids the ``Template:Template:Navbox`` bug.
+    """
+    value = str(value).strip()
+    prefix = f"{namespace}:"
+    if value.lower().startswith(prefix.lower()):
+        return value[len(prefix):].strip()
+    return value
 
 
 def disallowed_tags(present: set[str], *, safe: list[str], unsafe: list[str]) -> set[str]:
@@ -140,8 +194,31 @@ def _do_jobs_locked() -> None:
     if settings.enable_heartbeat and not _heartbeat_ok():
         return
 
+    if not settings.submit_changes and not sys.stdin.isatty():
+        raise RuntimeError(
+            "submit_changes = false requires an interactive terminal: the bot "
+            "would copy each page to the clipboard and wait for a human to "
+            "paste it. Set submit_changes = true for unattended runs."
+        )
+
     # Set api_endpoint from settings before anything touches the site.
     wiki.api_endpoint = settings.api_endpoint
+
+    # Cheap read-only preflight through the raw API (which understands the
+    # configured endpoint and detects WAF/CAPTCHA pages) before pywikibot's
+    # heavier Site initialisation can fail with a less useful error.
+    probe = wiki.api_query({"action": "query", "meta": "siteinfo", "format": "json"})
+    if probe is None:
+        raise RuntimeError(
+            f"Could not reach the wiki API at {wiki.api_url}. Check api_endpoint "
+            "and logs/wiki.log; a WAF/CAPTCHA challenge is reported there."
+        )
+    if "error" in probe:
+        raise RuntimeError(
+            f"The wiki API rejected the preflight request: {probe['error']}. "
+            "Check MW_OAUTH_TOKEN and the bot account's rights."
+        )
+
     _ = wiki.site  # triggers lazy init + OAuth validation
 
     manifest = Manifest(os.path.join(PROJECT_ROOT, "cache", f"{settings.wiki_tag}.json"))
@@ -151,7 +228,7 @@ def _do_jobs_locked() -> None:
     # so a failed connection does not block a retry later today.
     if settings.enable_heartbeat:
         record_heartbeat(
-            file=DAILY_HEARTBEAT_FILE,
+            file=daily_heartbeat_file(),
             content=heartbeat_content(wiki_tag=settings.wiki_tag),
         )
 
@@ -160,6 +237,13 @@ def _do_jobs_locked() -> None:
             handled = _process_single_page(page_name)
         except SafetyAbort:
             raise
+        except (pywikibot.exceptions.NoPageError, pywikibot.exceptions.InvalidPageError):
+            # The page was deleted or renamed after it entered the manifest.
+            # Removing it prevents an endless "page not found" loop.
+            message = f"{page_name}: page no longer exists; removed from the todo list"
+            reporter.add("do_jobs", message)
+            logger.warning(message)
+            handled = True
         except Exception as exc:  # noqa: BLE001 - one bad page must not stop the run
             reporter.add("do_jobs", f"{page_name}: {type(exc).__name__}: {exc}")
             logger.error(f"[{page_name}] failed: {exc}")
@@ -180,7 +264,7 @@ def _do_jobs_locked() -> None:
 def _heartbeat_ok() -> bool:
     """Return ``False`` when the bot has already run today."""
     token = heartbeat_content(wiki_tag=settings.wiki_tag)
-    if not heartbeat_matches(file=DAILY_HEARTBEAT_FILE, content=token):
+    if not heartbeat_matches(file=daily_heartbeat_file(), content=token):
         return True
 
     message = f"YuGong already ran today ({token}); stopping to avoid editing twice."
@@ -191,15 +275,23 @@ def _heartbeat_ok() -> bool:
 
 def _prepare_manifest(manifest: Manifest, todo_list: list[str]) -> list[str]:
     """Merge freshly discovered pages with the pages still queued from last time."""
-    cached_url = manifest.data.get("url")
-    if cached_url and cached_url != wiki.api_endpoint:
+    current_url = wiki.base_url or wiki.api_endpoint
+    cached_raw = manifest.data.get("url")
+    # Normalise the cached value too: older versions stored the api.php URL,
+    # and comparing that verbatim against the base URL would abort a run after
+    # an upgrade even though it is the same wiki.
+    cached_url = (
+        (normalize_base_url(str(cached_raw)) or str(cached_raw)) if cached_raw else ""
+    )
+    if cached_url and cached_url != current_url:
         raise ValueError(
-            "Instance Url does not match the one in cache. "
-            "You might need to change the wiki_tag in the settings.toml"
+            f"Instance Url does not match the one in cache ({cached_url!r} vs "
+            f"{current_url!r}). You might need to change the wiki_tag in the "
+            "settings.toml"
         )
 
     merged = sorted(set(manifest.data.get("todo", [])) | set(todo_list))
-    manifest.data["url"] = wiki.api_endpoint
+    manifest.data["url"] = current_url
     manifest.data["todo"] = merged
     manifest.save()
     return merged
@@ -217,14 +309,16 @@ def _get_todo_list() -> list[str]:
     if page_range is not None:
         todo.update(_titles_for_pageids(*page_range))
 
-    if settings.linked_template:
-        template_page = pywikibot.Page(wiki.site, f"Template:{settings.linked_template}")
+    linked_template = strip_namespace_prefix(settings.linked_template, "Template")
+    if linked_template:
+        template_page = pywikibot.Page(wiki.site, f"Template:{linked_template}")
         transcluding = [page.title() for page in template_page.embeddedin(namespaces=[0])]
-        logger.info(f"Template:{settings.linked_template} is used by {len(transcluding)} pages")
+        logger.info(f"Template:{linked_template} is used by {len(transcluding)} pages")
         todo.update(transcluding)
 
-    if settings.category:
-        category = pywikibot.Category(wiki.site, f"Category:{settings.category}")
+    category_name = strip_namespace_prefix(settings.category, "Category")
+    if category_name:
+        category = pywikibot.Category(wiki.site, f"Category:{category_name}")
         todo.update(page.title() for page in category.members(namespaces=[0]))
 
     if not todo:
@@ -276,15 +370,25 @@ def _process_single_page(page_name: str) -> bool:
         on a later run).
     """
     pwb_page = wiki.page(page_name)
+    # ``Page.latest_revision`` requests exactly one revision *with* content, so
+    # one API call yields both the text and the revid.  Do NOT use
+    # ``latest_revision_id`` here: in pywikibot 11 it calls
+    # ``revisions(rvdir=False)``, which makes the generator paginate the page's
+    # ENTIRE history before returning.
+    revision = getattr(pwb_page, "latest_revision")
+    base_revid = int(revision.revid)
+    content = str(revision.text or "")
+    # pywikibot 11 returns a Namespace object here, whose ``str()`` is e.g.
+    # ``":"`` for the main namespace — not a number.  ``int()`` yields the id.
+    namespace_id = int(pwb_page.namespace())
     metadata: dict[str, str] = {
         "title": pwb_page.title(),
         "pageid": str(pwb_page.pageid),
-        "revid": str(pwb_page.latest_revision_id),
-        "namespace": str(pwb_page.namespace()),
+        "revid": str(base_revid),
+        "namespace": str(namespace_id),
         "permission": "",
     }
 
-    content = pwb_page.text
     wikitext = Wikitext(metadata)
     wikitext.parse(content)
 
@@ -320,11 +424,31 @@ def _process_single_page(page_name: str) -> bool:
         print(f"No changes made to {page_name}, continue.")
         return True
 
+    max_diff = int(settings.max_acceptable_diff_size)
+    if abs(len(content) - len(new_text)) > max_diff:
+        message = (
+            f"{page_name}: length changes by at least "
+            f"{abs(len(content) - len(new_text))} characters, above "
+            f"max_acceptable_diff_size={max_diff}; skipped"
+        )
+        reporter.add("safety", message)
+        logger.warning(message)
+        return False
+
+    if len(content) + len(new_text) > MAX_DIFF_CHARS:
+        message = (
+            f"{page_name}: page is too large to diff safely "
+            f"({len(content)} + {len(new_text)} chars); skipped"
+        )
+        reporter.add("safety", message)
+        logger.warning(message)
+        return False
+
     size = diff_size(content, new_text)
-    if size > int(settings.max_acceptable_diff_size):
+    if size > max_diff:
         message = (
             f"{page_name}: change of {size} characters exceeds "
-            f"max_acceptable_diff_size={settings.max_acceptable_diff_size}; skipped"
+            f"max_acceptable_diff_size={max_diff}; skipped"
         )
         reporter.add("safety", message)
         logger.warning(message)
@@ -333,7 +457,12 @@ def _process_single_page(page_name: str) -> bool:
     if settings.submit_changes:
         try:
             pwb_page.text = new_text
-            pwb_page.save(summary=settings.edit_comment, bot=True)
+            pwb_page.save(
+                summary=settings.edit_comment,
+                bot=True,
+                baserevid=base_revid,
+                apply_cosmetic_changes=False,
+            )
         except Exception as exc:  # noqa: BLE001 - report and keep the page queued
             reporter.add("submit", f"{page_name}: {type(exc).__name__}: {exc}")
             logger.error(f"Failed to submit {page_name}: {exc}")
@@ -344,12 +473,33 @@ def _process_single_page(page_name: str) -> bool:
         return True
 
     # Manual mode: clipboard + browser, the human pastes and saves.
-    pyperclip.copy(new_text)
-    webbrowser.open(f"{wiki.api_endpoint}index.php?title={quote(page_name)}&action=edit")
+    try:
+        pyperclip.copy(new_text)
+        copied = "copied to your clipboard"
+    except Exception as exc:  # noqa: BLE001 - headless machines have no clipboard
+        fallback = _save_manual_copy(page_name, new_text)
+        copied = f"could not be copied ({type(exc).__name__}); saved to {fallback}"
+        logger.warning(f"[{page_name}] clipboard unavailable: {exc}; wrote {fallback}")
+
+    webbrowser.open(f"{wiki.base_url}index.php?title={quote(page_name)}&action=edit")
     print(f"{size} characters changed.")
     input(
-        "The new wikitext has been copied to your clipboard.\n"
+        f"The new wikitext {copied}.\n"
         "Due to settings, you need to manually paste and submit it.\n"
         "Press any key to continue..."
     )
     return True
+
+
+def _save_manual_copy(page_name: str, text: str) -> str:
+    """Write *text* to ``cache/manual/<page>.wikitext`` and return the path."""
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", page_name).strip("_") or "page"
+    # Titles can sanitise to the same name ("A/B" and "A:B"); the digest keeps
+    # their copies apart instead of silently overwriting each other.
+    digest = hashlib.sha1(page_name.encode("utf-8")).hexdigest()[:8]
+    directory = os.path.join(PROJECT_ROOT, "cache", "manual")
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{safe_name}_{digest}.wikitext")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    return path

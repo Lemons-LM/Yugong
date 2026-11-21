@@ -216,3 +216,5 @@ data/
 
 # pywikibot state
 throttle.ctrl
+# Created when pywikibot is imported without main.py setting PYWIKIBOT_DIR
+apicache/

@@ -14,9 +14,33 @@ from src.Yugong.utilities.path_helper import PROJECT_ROOT
 LOCK_PATH: Path = PROJECT_ROOT / "data" / "lock"
 
 
+def _pid_alive_windows(pid: int) -> bool:
+    """Windows: ``os.kill(pid, 0)`` TERMINATES the process, so use OpenProcess."""
+    import ctypes
+
+    kernel32 = getattr(ctypes, "windll").kernel32
+    process_query_limited_information = 0x1000
+    still_active = 259
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        return False
+    try:
+        exit_code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False
+        return exit_code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        try:
+            return _pid_alive_windows(pid)
+        except OSError:
+            return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -62,7 +86,10 @@ def lock() -> bool:
 
 
 def unlock() -> None:
-    """Release the lock. Silently ignores a missing file."""
+    """Release the lock if this process still owns it."""
+    # Do not delete another process's lock if ours was reclaimed as stale.
+    if read_lock_pid() != os.getpid():
+        return
     try:
         LOCK_PATH.unlink()
     except FileNotFoundError:

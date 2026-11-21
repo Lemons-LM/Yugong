@@ -13,6 +13,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAIN = REPO_ROOT / "main.py"
@@ -84,6 +85,36 @@ class MainEntryPointTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("not found", result.stderr)
+
+
+class CheckConnectionTest(unittest.TestCase):
+    def test_successful_preflight_returns_zero(self) -> None:
+        import main as main_module
+        from src.Yugong.core import wiki as wiki_module
+
+        payload = {"query": {"general": {"sitename": "TestWiki"}}}
+        with mock.patch.object(wiki_module, "get_oauth_token", return_value="t"), \
+             mock.patch.object(wiki_module.wiki, "api_query", return_value=payload):
+            self.assertEqual(main_module.check_connection(), 0)
+
+    def test_a_waf_block_is_reported_and_returns_no_success(self) -> None:
+        import main as main_module
+        from src.Yugong.core import wiki as wiki_module
+
+        with mock.patch.object(wiki_module, "get_oauth_token", return_value="t"), \
+             mock.patch.object(wiki_module.wiki, "api_query", return_value=None):
+            with self.assertRaises(RuntimeError) as ctx:
+                main_module.check_connection()
+        self.assertIn("WAF", str(ctx.exception))
+
+    def test_a_missing_token_is_reported(self) -> None:
+        import main as main_module
+        from src.Yugong.core import wiki as wiki_module
+
+        with mock.patch.object(wiki_module, "get_oauth_token", return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                main_module.check_connection()
+        self.assertIn("MW_OAUTH_TOKEN", str(ctx.exception))
 
 
 class PywikibotDataDirTest(unittest.TestCase):

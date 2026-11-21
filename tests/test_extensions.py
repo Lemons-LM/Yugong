@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
+from src.Yugong.core.bot_db import BotDB
 from src.Yugong.core.wikitext import Wikitext
 from src.Yugong.extensions import category_handler as ch
 from src.Yugong.extensions import example as ex
@@ -46,6 +49,12 @@ class FixCiteTemplateTest(unittest.TestCase):
     def test_template_without_anonymous_params_is_untouched(self) -> None:
         self.assertEqual(run_job(fc.fix_cite_template_job, "{{Cite book}}"), "{{Cite book}}")
 
+    def test_nested_cite_templates_do_not_crash_on_detached_nodes(self) -> None:
+        text = "{{Cite web|u|Foo|{{Cite book|x|y}}}}"
+        result = run_job(fc.fix_cite_template_job, text)
+        self.assertIn("{{!}}", result)
+        self.assertIn("{{Cite book|x|y}}", result)
+
     def test_intro_mentions_cite(self) -> None:
         self.assertIn("Cite", fc.fix_cite_template_intro())
 
@@ -77,6 +86,14 @@ class RmUndefinedRefsTest(unittest.TestCase):
 
 
 class RmVoidTemplateTest(unittest.TestCase):
+    def setUp(self) -> None:
+        rv._alias_keys = None
+        rv._aliases_loaded = False
+
+    def tearDown(self) -> None:
+        rv._alias_keys = None
+        rv._aliases_loaded = False
+
     def test_normalises_void_targets(self) -> None:
         for title in ("Template:Void", "template:void", "  TEMPLATE: VOID ", "模板:Void"):
             self.assertTrue(rv._is_void_target(title), title)
@@ -88,6 +105,7 @@ class RmVoidTemplateTest(unittest.TestCase):
     def test_resolved_target_is_cached_and_reused(self) -> None:
         fake = FakeBotDB()
         with mock.patch.object(rv, "bot_db", fake), \
+             mock.patch.object(rv, "_load_void_aliases", return_value=None), \
              mock.patch.object(rv, "_resolve_redirect_target", return_value="Template:Void") as resolver:
             self.assertTrue(rv._is_void_template("Navbox"))
             self.assertTrue(rv._is_void_template("Navbox"))
@@ -99,24 +117,74 @@ class RmVoidTemplateTest(unittest.TestCase):
     def test_non_void_target_is_cached_as_normal(self) -> None:
         fake = FakeBotDB()
         with mock.patch.object(rv, "bot_db", fake), \
+             mock.patch.object(rv, "_load_void_aliases", return_value=None), \
              mock.patch.object(rv, "_resolve_redirect_target", return_value="Template:Other"):
             self.assertFalse(rv._is_void_template("Navbox"))
 
         self.assertEqual(fake.rows["template"][0]["type"], "normal")
         self.assertEqual(fake.rows["template"][0]["target"], "Template:Other")
 
+    def test_a_legacy_row_without_type_is_refreshed(self) -> None:
+        """Rows from before the ``type`` column existed must not look normal."""
+        fake = FakeBotDB()
+        fake.insert("template", {"title": "Navbox", "target": "Template:Void", "type": None})
+        with mock.patch.object(rv, "bot_db", fake), \
+             mock.patch.object(rv, "_load_void_aliases", return_value=None), \
+             mock.patch.object(rv, "_resolve_redirect_target", return_value="Template:Void"):
+            self.assertTrue(rv._is_void_template("Navbox"))
+
+        self.assertEqual(fake.rows["template"][0]["type"], "void")
+
     def test_missing_template_is_not_void(self) -> None:
         fake = FakeBotDB()
         with mock.patch.object(rv, "bot_db", fake), \
+             mock.patch.object(rv, "_load_void_aliases", return_value=None), \
              mock.patch.object(rv, "_resolve_redirect_target", return_value=None):
             self.assertFalse(rv._is_void_template("Navbox"))
 
         self.assertEqual(fake.rows["template"][0]["type"], "normal")
 
+    def test_preloaded_alias_is_void_without_resolving(self) -> None:
+        rv._alias_keys = {"commonscat"}
+        rv._aliases_loaded = True
+        with mock.patch.object(rv, "bot_db", FakeBotDB()), \
+             mock.patch.object(rv, "_resolve_redirect_target") as resolver:
+            self.assertTrue(rv._is_void_template("Commonscat"))
+            resolver.assert_not_called()
+
+    def test_redirect_chain_to_a_void_alias(self) -> None:
+        rv._alias_keys = {"commonscat"}
+        rv._aliases_loaded = True
+        target = mock.Mock()
+        target.title.return_value = "Template:Commonscat"
+        first = mock.Mock()
+        first.isRedirectPage.return_value = True
+        first.getRedirectTarget.return_value = target
+
+        with mock.patch.object(rv, "bot_db", FakeBotDB()), \
+             mock.patch.object(rv.pywikibot, "Page", return_value=first):
+            self.assertTrue(rv._is_void_template("A"))
+
+    def test_alias_loader_populates_and_reuses_the_cache(self) -> None:
+        with TemporaryDirectory() as tmp:
+            db = BotDB(Path(tmp) / "db.sqlite3")
+            payload = {"query": {"backlinks": [{"title": "Template:Commonscat"}]}}
+            with mock.patch.object(rv, "bot_db", db), \
+                 mock.patch.object(rv.wiki, "api_query", return_value=payload) as api:
+                rv._load_void_aliases()
+                self.assertIn("commonscat", rv._alias_keys or set())
+                self.assertTrue(rv._is_void_template("Commonscat"))
+                rv._load_void_aliases()
+                self.assertEqual(api.call_count, 1)
+
     def test_job_removes_void_templates_only(self) -> None:
         with mock.patch.object(rv, "_is_void_template", side_effect=lambda name: name == "Void"):
             result = run_job(rv.rm_void_template_job, "a{{Void}}b{{Keep}}c")
         self.assertEqual(result, "ab{{Keep}}c")
+
+    def test_nested_void_templates_do_not_crash_on_detached_nodes(self) -> None:
+        with mock.patch.object(rv, "_is_void_template", return_value=True):
+            self.assertEqual(run_job(rv.rm_void_template_job, "a{{Void|{{Void}}}}b"), "ab")
 
     def test_job_is_marked_as_needing_a_wiki(self) -> None:
         self.assertTrue(getattr(rv.rm_void_template_job, "needs_wiki", False))
@@ -150,19 +218,66 @@ class CategoryHandlerTest(unittest.TestCase):
         ch._rewrite_category_link(link, "New")
         self.assertEqual(str(wikitext), "[[Category:New|sort key]]")
 
-    def test_job_uses_the_cache_without_touching_the_wiki(self) -> None:
+    def test_resolve_category_uses_the_cache_without_touching_the_wiki(self) -> None:
         fake = FakeBotDB()
         fake.insert("category", {"title": "Old", "target": "New", "sort_index": ""})
         with mock.patch.object(ch, "bot_db", fake), \
-             mock.patch.object(ch, "_to_zh_hans", side_effect=AssertionError("should not convert")):
-            result = run_job(ch.category_handler_job, "text [[Category:Old]] more")
-        self.assertEqual(result, "text [[Category:New]] more")
+             mock.patch.object(ch.pywikibot, "Page") as page_cls:
+            self.assertEqual(ch._resolve_category("Old"), "New")
+            page_cls.assert_not_called()
 
-    def test_job_leaves_links_alone_when_nothing_is_cached_as_redirected(self) -> None:
+    def test_resolve_category_reads_a_redirect_and_caches_it(self) -> None:
+        page = mock.Mock()
+        page.exists.return_value = True
+        page.text = "{{分类重定向|New|index}}"
         fake = FakeBotDB()
         with mock.patch.object(ch, "bot_db", fake), \
-             mock.patch.object(ch, "_to_zh_hans", return_value="Old"):
-            text = "text [[Category:Old]] [[Foo]] more"
+             mock.patch.object(type(ch.wiki), "site", mock.PropertyMock(return_value=mock.Mock())), \
+             mock.patch.object(ch.pywikibot, "Page", return_value=page):
+            self.assertEqual(ch._resolve_category("Old"), "New")
+        self.assertEqual(fake.rows["category"][0]["target"], "New")
+
+    def test_resolve_category_returns_none_for_a_missing_page(self) -> None:
+        page = mock.Mock()
+        page.exists.return_value = False
+        with mock.patch.object(ch, "bot_db", FakeBotDB()), \
+             mock.patch.object(type(ch.wiki), "site", mock.PropertyMock(return_value=mock.Mock())), \
+             mock.patch.object(ch.pywikibot, "Page", return_value=page):
+            self.assertIsNone(ch._resolve_category("Old"))
+
+    def test_job_rewrites_to_the_noteta_converted_category(self) -> None:
+        text = "{{NoteTA|1=zh-cn:米; zh-tw:公尺;}}\n[[Category:公尺]]"
+
+        def resolve(name: str) -> str | None:
+            return name if name == "米" else None
+
+        def rules_from(config: object, **_kwargs: object) -> list[str]:
+            return list(getattr(config, "local_rules"))
+
+        with mock.patch.object(ch, "_resolve_category", side_effect=resolve), \
+             mock.patch.object(ch, "_to_zh_hans", side_effect=lambda value: value), \
+             mock.patch.object(ch, "resolve_note_ta_rules", side_effect=rules_from):
+            result = run_job(ch.category_handler_job, text)
+        self.assertIn("[[Category:米]]", result)
+
+    def test_job_keeps_the_original_when_the_converted_category_is_missing(self) -> None:
+        text = "{{NoteTA|1=zh-cn:米; zh-tw:公尺;}}\n[[Category:公尺]]"
+
+        def resolve(name: str) -> str | None:
+            return name if name == "公尺" else None
+
+        def rules_from(config: object, **_kwargs: object) -> list[str]:
+            return list(getattr(config, "local_rules"))
+
+        with mock.patch.object(ch, "_resolve_category", side_effect=resolve), \
+             mock.patch.object(ch, "_to_zh_hans", side_effect=lambda value: value), \
+             mock.patch.object(ch, "resolve_note_ta_rules", side_effect=rules_from):
+            result = run_job(ch.category_handler_job, text)
+        self.assertIn("[[Category:公尺]]", result)
+
+    def test_job_leaves_non_category_links_alone(self) -> None:
+        with mock.patch.object(ch, "resolve_note_ta_rules", return_value=[]):
+            text = "text [[Foo]] more"
             self.assertEqual(run_job(ch.category_handler_job, text), text)
 
     def test_opencc_missing_is_not_fatal(self) -> None:

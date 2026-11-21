@@ -69,7 +69,7 @@ Conditional value transformations within a parameter:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `condition` | `str` | Regex searched in the stripped param value. Required — an empty condition does nothing |
+| `condition` | `str` | Regex searched in the stripped param value. Required — a missing/empty condition is rejected at load time so a rule cannot silently do nothing |
 | `mode` | `bool` | `true` (default) = apply when the condition matches; `false` = apply when it doesn't |
 | `match` | `str` | Regex used to rewrite the value |
 | `replacement` | `str` | Replacement string (supports `\1`, `\2` backreferences) |
@@ -113,9 +113,18 @@ replacement = "live"
 During startup, `TemplateFormatter.get_ruleset()` (re)loads every `*.toml` file in `template_rules/`, sorted by filename. For each rule, it:
 
 1. Checks `apply_websites` against the configured `api_endpoint` domain (via `check_same_website`, which ignores a `www.` prefix and any port). Non-matching rules are logged and skipped.
-2. Validates the rule: `names` must be non-empty, `introduction` must be set, and `[template_level]` must not combine conflicting actions. A malformed rule aborts the run with a descriptive error instead of being ignored.
+2. Validates the rule: `names` must be non-empty, `introduction` must be set, `[template_level]` must not combine conflicting actions, every regex (parameter names, `condition`, `match`) must compile, and `rename = true` requires `new_name`. A malformed rule aborts the run with a descriptive error instead of being ignored.
 3. Registers the rule under every capitalized `names` entry, rejecting duplicates.
 
 Later, during page processing, `format_template()` runs as the first step: for every template on the page it looks up `_safe_capitalize(name)` in the registry and applies the matching rule (template-level action first, then the `params` blocks).
 
-There are currently no shipped `*.toml` rules.
+## Shipped rules
+
+| File | What it does |
+|------|--------------|
+| `deprecated_city.toml` | Replaces `{{城市|...}}` with the exact `{{Infobox settlement|...}}` mapping defined by `Template:城市` |
+| `deprecated_country_infobox.toml` | Replaces `{{國家基礎資訊|...}}` with the exact `{{Infobox country|...}}` mapping defined by `Template:國家基礎資訊` |
+
+Both use `template_level.replace` and `apply_websites = ["qiuwenbaike.cn"]`. The country replacement is about 6.5k characters after expansion, so a run that applies it needs `max_acceptable_diff_size` above the default 1000. The city replacement is about 800 characters.
+
+These were generated from the wiki's own deprecated wrapper templates (no hand-written parameter mapping). The other deprecated templates that declare a `new=` target — `Clickable button`, `Demography 4col`, `DisestcatCountry`, `DisestcatUSstate`, `Double image`, `Infobox DRCongo province`, `Infobox star`, `Markup`, `PBB`, `Ping2`, `Respell`, `Start rail box`, `Vertical images list` — are deliberately not shipped as blind renames: they use modules, have a different parameter model, or need a parameter-aware migration that this engine cannot express safely.

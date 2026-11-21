@@ -44,8 +44,8 @@ python3 main.py --dev input.wikitext output.wikitext
 |---------|---------|
 | `src/Yugong/core/` | Core domain: `wiki.py` (pywikibot-based `Wiki` class), `wikitext.py` (mwparserfromhell wrapper), `settings.py` (TOML config loader + validation), `template_formatter.py` (template rule engine), `logger.py`, plus `bot_db.py`, `mailer.py`, `manifest.py` |
 | `src/Yugong/processor/` | `do_jobs.py` — main processing loop; `pipeline.py` — shared `build_steps`/`apply_steps` step machinery; `dev_mode.py` — offline file-in/file-out processing |
-| `src/Yugong/utilities/` | Utilities: `extensions.py` (extension discovery/loading), `confirm_settings.py`, `mark_job_intro.py` (decorator registry), `path_helper.py` (`PROJECT_ROOT`), `link.py`, `lock.py`, `marks.py`, `pwb_related.py` (family registration), `check_same_website.py`, `check_heartbeat.py`, `reporter.py`, `calculate_length.py`, `signature_parser.py`, `sections_to_page.py`, `record_start_time.py` |
-| `src/Yugong/extensions/` | User-defined processing jobs registered via `@job`/`@intro` decorators |
+| `src/Yugong/utilities/` | Utilities: `extensions.py` (extension discovery/loading), `confirm_settings.py`, `mark_job_intro.py` (decorator registry), `path_helper.py` (`PROJECT_ROOT`), `urls.py` (api_endpoint → base/api.php/scriptpath), `note_ta.py` (NoteTA/CGroup parsing), `cgroup_cache.py` (fetches/caches CGroup data), `link.py`, `lock.py`, `marks.py`, `pwb_related.py` (family registration), `check_same_website.py`, `check_heartbeat.py`, `reporter.py`, `calculate_length.py`, `signature_parser.py`, `sections_to_page.py`, `record_start_time.py` |
+| `src/Yugong/extensions/` | Processing jobs registered via `@job`/`@intro`: `cangjie.py` (NoteTA/CGroup + OpenCC text conversion, `enable_cangjie`), `category_handler.py`, `category_policy.py` (QW:CAT prefix/sort-key/`catnav` rules), `fix_cite_template.py`, `lint_fixes.py` (obsolete tags/attributes, self-closing tags, empty headings, duplicate image sizes, empty sort keys), `rm_undefined_refs.py`, `rm_void_template.py` (preloaded `Template:Void` alias set + redirect chains), plus the no-op `example.py` |
 
 The legacy `src/Yugong/models/` directory (including `models/marks.py`) was deleted; `Marks` now lives in `src/Yugong/utilities/marks.py`.
 
@@ -55,6 +55,10 @@ The legacy `src/Yugong/models/` directory (including `models/marks.py`) was dele
 - All raw API calls go through `Wiki._api_get` / `Wiki.api_query`, which honour `request_max_tries`/`request_timeout`, back off between attempts, tolerate non-JSON bodies (bot-protection challenge pages, HTML errors) and return `None` instead of raising.
 - `do_jobs.py` uses pywikibot directly — e.g. `wiki.page(title).text` to read, `page.save()` to write, `pywikibot.Page(site, ...).embeddedin()` to list pages, `pywikibot.Category(site, ...).members()` to list category members.
 - The `Wikitext` class is a thin wrapper around `mwparserfromhell.Wikicode`. It holds metadata (title, revid, page_id, namespace) and provides `parse(content)` and `update(content)`, plus `templates()`/`wikilinks()`/`tags()` snapshots for extensions.
+- NoteTA/CGroup support lives in `utilities/note_ta.py` (parsing and conversion) and `utilities/cgroup_cache.py` (fetch/cache). Conversion is a single longest-match pass where existing target terms pre-empt shorter sources, so it is idempotent and does not cascade. `category_handler` uses it for category names; `cangjie` uses it for visible article text, with OpenCC `t2s` as the script-level layer (also used for pages without NoteTA).
+- `lint_fixes.py` only operates on tags/attributes the bot can change safely. It walks template argument values but never template/parameter names, skips `nowiki`/`code`/`pre`-style contents, and leaves the risky Linter categories documented in its module docstring to humans.
+- `category_policy.py` applies the automatable parts of `QW:CAT`: canonical `Category:` prefix, duplicate-link removal, redundant sort-key removal, and `{{catnav|auto=1}}` on category pages.
+- `rm_void_template.py` preloads every redirect to `Template:Void` (1,000+ titles) into the per-wiki `template` table, follows redirect chains, and refreshes the alias snapshot weekly.
 
 ## Extension System
 
@@ -77,6 +81,8 @@ TOML files defining transformations applied to wiki templates. Each rule file sp
 
 Loaded by `TemplateFormatter.get_ruleset()` (which validates and rejects conflicting or incomplete rules) and applied by `formatter.format_template()`, the first processing step of every page. The loader globs `template_rules/*.toml` only, so the copy-me file `example.toml.disabled` is deliberately ignored.
 
+Shipped rules: `deprecated_city.toml` and `deprecated_country_infobox.toml` replace the deprecated `{{城市}}` / `{{國家基礎資訊}}` wrappers with the exact `{{Infobox settlement}}` / `{{Infobox country}}` calls defined by those wiki templates. The country replacement is ~6.5k chars, so applying it needs `max_acceptable_diff_size` above 1000. Other deprecated templates need parameter-aware migrations and are intentionally not shipped as blind renames.
+
 ## Configuration
 
 `settings.toml` at project root. `Settings` loads the TOML at import time but defers *validation* to `Settings.validate()`, which `confirm_settings()` and `do_jobs()` call — importing a module never requires a fully configured wiki. Set `YUGONG_SETTINGS` to override the settings file path.
@@ -90,10 +96,11 @@ Key settings:
 - `max_acceptable_diff_size` (default `1000`) — safety limit on edit diffs
 - `is_dangerous_tag_unacceptable` (default `true`), `safe_tag_list` (default `[]`), `unsafe_tag_list`
 - `enable_heartbeat` (default `false`) — optional daily duplicate-run guard
+- `enable_cangjie` (default `false`) — convert visible article text to `zh-cn` through the page's NoteTA/CGroup rules, then OpenCC `t2s`; pages without NoteTA still get the OpenCC script conversion
 - `request_max_tries`/`request_timeout` (defaults `3`/`30`)
 - `log_level` — 0=CRITICAL, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG
 
-`validate()` enforces a non-empty `api_endpoint`, `is_owner_only`, `bot_name`/`wiki_domain`/`edit_comment`, at least one page selector, `page_id_end >= page_id_start`, a `MAX_PAGEID_SPAN = 5000` cap, mutually exclusive tag lists, positive numeric limits, a valid `log_level`, and raises `NotImplementedError` when `enable_cangjie = true` (automatic Chinese variant conversion is not implemented).
+`validate()` enforces a non-empty `api_endpoint`, `is_owner_only`, `bot_name`/`wiki_domain`/`edit_comment`, at least one page selector, `page_id_end >= page_id_start`, a `MAX_PAGEID_SPAN = 5000` cap, mutually exclusive tag lists, positive numeric limits, and a valid `log_level`.
 
 ## Important Conventions
 

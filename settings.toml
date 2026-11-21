@@ -8,10 +8,16 @@
 # start with a descriptive message if something is missing or contradictory.
 
 # ── Wiki connection ──────────────────────────────────────────────────────────
-# The directory holding api.php / index.php / rest.php, including the trailing
-# slash.  Do NOT include the file name.
-api_endpoint = ""
-user_agent = ""
+# The wiki URL.  Either the directory holding api.php / index.php / rest.php
+# (with or without a trailing slash), or the api.php URL itself — both are
+# accepted and normalised.  Qiuwen's default is below; change it for another
+# wiki.
+api_endpoint = "https://www.qiuwenbaike.cn/"
+# Leave these commented out to use the defaults from core/settings.py.  If you
+# override them, keep a real User-Agent with a contact address: many WAFs and
+# MediaWiki installations reject empty or generic agents.
+# user_agent = "Yugong/1.0 (your-name; you@example.com)"
+# user_agent_check = "Yugong/1.0 (Check suppressed)"
 # Only OAuth is supported, so this must stay true.  Put the access token in the
 # MW_OAUTH_TOKEN environment variable (never in this file).
 is_owner_only = true
@@ -42,9 +48,10 @@ submit_changes = false
 # Allow template rules to rename templates / parameters.
 overwrite_template_name = true
 overwrite_para_name = true
-# NOT IMPLEMENTED.  YuGong refuses to start when this is true rather than
-# silently doing nothing.  category_handler converts category titles through
-# OpenCC when it is installed.
+# Cangjie: convert visible article text to zh-cn using the page's NoteTA/
+# CGroup rules, then OpenCC.  Pages without NoteTA still get the OpenCC
+# script-level conversion.  Categories are handled separately by
+# category_handler.  Requires the NoteTA groups to be readable by the bot.
 enable_cangjie = false
 # true = refuse to run twice on the same UTC day (for cron/robot deployments).
 enable_heartbeat = false
@@ -60,7 +67,9 @@ unsafe_tag_list = []
 #   true  = abort the whole run (default, fail loudly)
 #   false = skip that page and report it
 is_dangerous_tag_unacceptable = true
-# Reject an edit whose changed-character count exceeds this.
+# Reject an edit whose changed-character count exceeds this.  The shipped
+# {{國家基礎資訊}} -> {{Infobox country}} rule expands to a large call (about
+# 3.5k changed characters), so raise this if you intend to use that rule.
 max_acceptable_diff_size = 1000
 # Retries per API request, and the per-request timeout in seconds.
 request_max_tries = 3

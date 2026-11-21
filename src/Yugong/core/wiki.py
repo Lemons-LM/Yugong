@@ -34,6 +34,7 @@ from src.Yugong.core.settings import settings
 from src.Yugong.utilities.link import get_user_talk
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
 from src.Yugong.utilities.pwb_related import register_family
+from src.Yugong.utilities.urls import api_url, base_url
 
 #: Requests between two "is the bot still allowed to run?" checks.
 SUPPRESSION_CHECK_INTERVAL: int = 20
@@ -46,6 +47,10 @@ OAUTH_ENV_VARS: tuple[str, ...] = ("MW_OAUTH_TOKEN", "MW_BOT_OAUTH_TOKEN")
 #: Page the wiki admins edit to signal "this bot must stop".
 SUPPRESSION_PAGE_TEMPLATE: str = "User:{bot_name}/block"
 
+#: Heartbeat token stored when the suppression page did not exist yet.  Its
+#: later creation is itself the stop signal.
+SUPPRESSION_PAGE_ABSENT: str = "<absent>"
+
 
 def get_oauth_token() -> str | None:
     """Return the OAuth access token from the environment, if any.
@@ -55,15 +60,37 @@ def get_oauth_token() -> str | None:
     """
     for name in OAUTH_ENV_VARS:
         value = os.environ.get(name)
-        if value:
-            return value
+        if value and value.strip():
+            return value.strip()
     return None
+
+
+def _is_waf_challenge(response: Any) -> bool:
+    """Return ``True`` when a non-JSON body is a WAF/CAPTCHA challenge page.
+
+    Ali Baba Cloud's WAF (used by qiuwenbaike.cn) serves a small HTML page with
+    ``aliyun_waf`` markers and a CAPTCHA script.  Retrying it is pointless and
+    can get the client blocked harder, so the caller reports it once.
+    """
+    try:
+        content_type = str(response.headers.get("Content-Type", "")).lower()
+        if "html" not in content_type and "text" not in content_type:
+            return False
+        body = response.content[:8192].decode("utf-8", "ignore").lower()
+    except Exception:  # noqa: BLE001 - a broken body is just "not a challenge"
+        return False
+    markers = ("aliyun_waf", "acw_sc__v2", "captchav2.js", "captcha")
+    return any(marker in body for marker in markers)
 
 
 def apply_pywikibot_config() -> None:
     """Push YuGong's settings into pywikibot's global configuration."""
     config.user_agent_format = settings.user_agent_format
-    config.cosmetic_changes = True
+    # Cosmetic changes rewrite the text inside pywikibot *after* YuGong has
+    # checked it against max_acceptable_diff_size, so the saved revision could
+    # differ from the one the operator reviewed.  Keep the pipeline's output
+    # authoritative.
+    config.cosmetic_changes = False
     config.minthrottle = 2
     # pywikibot defaults to retry_max = 120 with a 5 s wait, which turns a blocked
     # wiki into a multi-minute hang.  Honour the project's own retry budget.
@@ -81,7 +108,7 @@ class Wiki:
         if api_endpoint is None:
             api_endpoint = str(
                 getattr(settings, "api_endpoint", "")
-                or f"https://{getattr(settings, 'wiki_domain', 'www.qiuwenbaike.cn')}/api.php"
+                or f"https://{getattr(settings, 'wiki_domain', 'www.qiuwenbaike.cn')}/"
             )
         if not bot_name.strip() or not api_endpoint.strip():
             raise ValueError("Bot name and api endpoint cannot be empty")
@@ -90,12 +117,28 @@ class Wiki:
         self.api_endpoint = api_endpoint
         self.logger = BotLogger("wiki")
         self.csrf_token = ""
-        self.heartbeat_file = os.path.join(PROJECT_ROOT, "data", "bot", "heartbeat")
+        # Key the kill-switch baseline by wiki_tag: two wikis must not share it.
+        tag = re.sub(r"[^A-Za-z0-9._-]", "_", str(getattr(settings, "wiki_tag", "wiki")))
+        self.heartbeat_file = os.path.join(
+            PROJECT_ROOT, "data", "bot", f"heartbeat_{tag or 'wiki'}"
+        )
         self.heartbeat = ""
         self.request_count = 0
         self._tick_disabled = False
         self._site: BaseSite | None = None
         self.logger.info("WikiBot initialized")
+
+    # ── URL helpers ───────────────────────────────────────────────────
+
+    @property
+    def api_url(self) -> str:
+        """The ``api.php`` URL derived from :attr:`api_endpoint`."""
+        return api_url(self.api_endpoint)
+
+    @property
+    def base_url(self) -> str:
+        """The wiki directory URL (always ending in ``/``)."""
+        return base_url(self.api_endpoint)
 
     # ── Raw API access ────────────────────────────────────────────────
 
@@ -120,13 +163,18 @@ class Wiki:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        endpoint = self.api_url
+        if not endpoint:
+            self.logger.error(f"Invalid api_endpoint: {self.api_endpoint!r}")
+            return None
+
         attempts = max(1, int(settings.request_max_tries))
         last_problem = "no attempt made"
 
         for attempt in range(1, attempts + 1):
             try:
                 response = http.session.get(
-                    self.api_endpoint,
+                    endpoint,
                     params=params,
                     headers=headers,
                     timeout=float(settings.request_timeout),
@@ -142,6 +190,18 @@ class Wiki:
                     try:
                         data = response.json()
                     except ValueError:
+                        if _is_waf_challenge(response):
+                            # A WAF/CAPTCHA page will never become JSON no matter
+                            # how often we retry, and hammering it makes things
+                            # worse.  Fail with an actionable message instead.
+                            problem = (
+                                "the wiki returned a WAF/CAPTCHA challenge instead "
+                                "of the API (see logs/wiki.log). This client cannot "
+                                "solve it; run from an allowed network, allow-list "
+                                "the bot's IP/User-Agent, or ask a wiki admin."
+                            )
+                            self.logger.error(problem)
+                            return None
                         last_problem = (
                             "response body was not JSON "
                             f"(content-type: {response.headers.get('Content-Type', '?')})"
@@ -166,11 +226,12 @@ class Wiki:
 
     # ── Kill switch ───────────────────────────────────────────────────
 
-    def _read_heartbeat(self) -> str:
+    def _read_heartbeat(self) -> str | None:
+        """Return the stored token; ``None`` when no baseline was recorded yet."""
         try:
             return Path(self.heartbeat_file).read_text(encoding="utf-8").strip()
         except (FileNotFoundError, OSError):
-            return ""
+            return None
 
     def _write_heartbeat(self, revid: str) -> None:
         path = Path(self.heartbeat_file)
@@ -205,22 +266,34 @@ class Wiki:
 
             page_data = next(iter(pages.values()))
             revisions = page_data.get("revisions") if isinstance(page_data, dict) else None
+            stored = self._read_heartbeat()
+
             if not revisions:
-                # Page missing or empty: nobody has signalled anything yet.
+                # No signal page yet.  Record that fact, so its later creation
+                # is treated as a suppression instead of becoming the baseline.
+                if not stored:
+                    self._write_heartbeat(SUPPRESSION_PAGE_ABSENT)
+                    self.logger.info(
+                        "Suppression page is absent; recording that as the baseline"
+                    )
                 return
 
             revid = str(revisions[0]["revid"])
-            stored = self._read_heartbeat()
 
             if not stored:
+                # First ever check and the page already exists: treat it as the
+                # "keep running" baseline.
                 self.heartbeat = revid
                 self._write_heartbeat(revid)
                 self.logger.info(f"Suppression heartbeat initialised at revision {revid}")
                 return
 
             self.heartbeat = stored
-            if stored != revid:
-                self.logger.critical("Bot has been suppressed")
+            if stored == SUPPRESSION_PAGE_ABSENT or stored != revid:
+                if stored == SUPPRESSION_PAGE_ABSENT:
+                    self.logger.critical("Suppression page was created; stopping")
+                else:
+                    self.logger.critical("Bot has been suppressed")
                 try:
                     mailer.email(
                         "Bot has been suppressed",
@@ -381,13 +454,15 @@ _original_request = http.session.request
 def guarded_request(method: str, url: str, *args: Any, **kwargs: Any) -> Any:
     """Wrap ``requests`` so every pywikibot call is throttled and authenticated."""
     wiki.tick()
-    wiki.logger.debug(f"Wiki request: {method} {url} {kwargs}")
+    # Never log kwargs: pywikibot puts CSRF tokens and page bodies there, and
+    # the OAuth header is added right below.
+    wiki.logger.debug(f"Wiki request: {method} {url}")
 
     token = get_oauth_token()
-    if token:
-        headers = kwargs.get("headers") or {}
-        if "Authorization" not in headers:
-            headers["Authorization"] = f"Bearer {token}"
+    if token and str(url).lower().startswith(("http://", "https://")):
+        # Copy the caller's dict so a retry cannot double-inject the header.
+        headers = dict(kwargs.get("headers") or {})
+        headers.setdefault("Authorization", f"Bearer {token}")
         kwargs["headers"] = headers
 
     return _original_request(method, url, *args, **kwargs)

@@ -14,7 +14,12 @@ from src.Yugong.core.manifest import Manifest
 from src.Yugong.core.wikitext import Wikitext
 from src.Yugong.processor import do_jobs
 from src.Yugong.processor.dev_mode import run_dev_mode
-from src.Yugong.processor.do_jobs import diff_size, disallowed_tags, pageid_batches
+from src.Yugong.processor.do_jobs import (
+    diff_size,
+    disallowed_tags,
+    pageid_batches,
+    strip_namespace_prefix,
+)
 from src.Yugong.processor.pipeline import TEMPLATE_RULE_STEP, apply_steps, build_steps
 from src.Yugong.utilities.check_heartbeat import heartbeat_content, record_heartbeat
 from src.Yugong.utilities.mark_job_intro import NEEDS_WIKI_ATTR
@@ -50,6 +55,26 @@ class DiffSizeTest(unittest.TestCase):
 
     def test_large_rewrite(self) -> None:
         self.assertEqual(diff_size("aaaa", "bbbb"), 4)
+
+    def test_large_pages_use_a_line_based_estimate(self) -> None:
+        """Above EXACT_DIFF_CHARS the estimate must stay small for a tiny edit."""
+        old = "".join(f"line {index}\n" for index in range(3000))
+        new = old.replace("line 1500\n", "line 1500 changed\n")
+        self.assertLess(diff_size(old, new), 100)
+
+    def test_large_page_rewrite_is_still_rejected_by_size(self) -> None:
+        old = "".join(f"line {index}\n" for index in range(3000))
+        self.assertGreater(diff_size(old, "completely different\n"), 1000)
+
+
+class NamespacePrefixTest(unittest.TestCase):
+    def test_prefix_is_removed_case_insensitively(self) -> None:
+        self.assertEqual(strip_namespace_prefix("Template:Navbox", "Template"), "Navbox")
+        self.assertEqual(strip_namespace_prefix("template:Navbox", "Template"), "Navbox")
+        self.assertEqual(strip_namespace_prefix("  Navbox  ", "Template"), "Navbox")
+
+    def test_an_unrelated_name_is_untouched(self) -> None:
+        self.assertEqual(strip_namespace_prefix("MyTemplate", "Template"), "MyTemplate")
 
 
 class PageidBatchesTest(unittest.TestCase):
@@ -232,25 +257,91 @@ class PrepareManifestTest(unittest.TestCase):
                     do_jobs._prepare_manifest(manifest, ["A"])
             self.assertIn("wiki_tag", str(ctx.exception))
 
+    def test_an_api_php_cache_url_is_normalised_not_rejected(self) -> None:
+        """An older cache stored ``.../api.php``; it is the same wiki."""
+        with TemporaryDirectory() as tmp:
+            manifest = Manifest(Path(tmp) / "cache.json")
+            manifest.save({"url": "https://x/api.php", "todo": ["A"]})
+
+            with mock.patch.object(do_jobs.wiki, "api_endpoint", "https://x/"):
+                self.assertEqual(do_jobs._prepare_manifest(manifest, ["B"]), ["A", "B"])
+            self.assertEqual(manifest.data["url"], "https://x/")
+
 
 class HeartbeatGuardTest(unittest.TestCase):
     def test_reads_without_claiming_and_refuses_a_second_run(self) -> None:
         with TemporaryDirectory() as tmp:
-            target = Path(tmp) / "heartbeat_daily"
+            base = Path(tmp) / "heartbeat_daily"
             today = heartbeat_content(wiki_tag="wiki")
 
-            with mock.patch.object(do_jobs, "DAILY_HEARTBEAT_FILE", str(target)), \
+            with mock.patch.object(do_jobs, "DAILY_HEARTBEAT_FILE", str(base)), \
                  mock.patch.object(do_jobs.settings, "wiki_tag", "wiki"), \
                  mock.patch.object(do_jobs.mailer, "email") as email:
+                effective = Path(do_jobs.daily_heartbeat_file())
                 self.assertTrue(do_jobs._heartbeat_ok())
                 # Checking must not consume the day's slot.
-                self.assertFalse(target.exists())
+                self.assertFalse(effective.exists())
 
-                record_heartbeat(file=target, content=today)
+                record_heartbeat(file=effective, content=today)
 
                 self.assertFalse(do_jobs._heartbeat_ok())
 
             self.assertEqual(email.call_count, 1)
+
+    def test_each_wiki_gets_its_own_daily_heartbeat(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with mock.patch.object(do_jobs, "DAILY_HEARTBEAT_FILE", str(Path(tmp) / "hb")), \
+                 mock.patch.object(do_jobs.settings, "wiki_tag", "alpha"):
+                alpha = do_jobs.daily_heartbeat_file()
+            with mock.patch.object(do_jobs, "DAILY_HEARTBEAT_FILE", str(Path(tmp) / "hb")), \
+                 mock.patch.object(do_jobs.settings, "wiki_tag", "beta"):
+                beta = do_jobs.daily_heartbeat_file()
+            self.assertNotEqual(alpha, beta)
+
+
+class _FakeNamespace:
+    """Mimics pywikibot 11's Namespace: ``str()`` is ':' for the main namespace."""
+
+    def __str__(self) -> str:
+        return ":"
+
+    def __int__(self) -> int:
+        return 0
+
+
+class SubmitChangesTest(unittest.TestCase):
+    def test_save_is_guarded_by_the_revision_that_was_read(self) -> None:
+        page = mock.Mock()
+        page.title.return_value = "T"
+        page.pageid = 1
+        page.latest_revision = mock.Mock(revid=42, text="old")
+        page.namespace.return_value = _FakeNamespace()
+
+        def add_marker(wikitext: Wikitext, _name: str, _steps: object) -> list[str]:
+            wikitext.wikitext.append("!")
+            return ["marker"]
+
+        with mock.patch.object(do_jobs.wiki, "page", return_value=page), \
+             mock.patch.object(do_jobs.settings, "submit_changes", True), \
+             mock.patch.object(do_jobs, "build_steps", return_value=([], [])), \
+             mock.patch.object(do_jobs, "apply_steps", side_effect=add_marker):
+            self.assertTrue(do_jobs._process_single_page("T"))
+
+        page.save.assert_called_once()
+        kwargs = page.save.call_args.kwargs
+        self.assertEqual(kwargs["baserevid"], 42)
+        self.assertFalse(kwargs["apply_cosmetic_changes"])
+
+
+class ManualCopyTest(unittest.TestCase):
+    def test_pages_whose_names_sanitise_the_same_do_not_overwrite(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with mock.patch.object(do_jobs, "PROJECT_ROOT", Path(tmp)):
+                first = do_jobs._save_manual_copy("A/B", "first")
+                second = do_jobs._save_manual_copy("A:B", "second")
+            self.assertNotEqual(first, second)
+            self.assertEqual(Path(first).read_text(encoding="utf-8"), "first")
+            self.assertEqual(Path(second).read_text(encoding="utf-8"), "second")
 
 
 class DevModeTest(unittest.TestCase):

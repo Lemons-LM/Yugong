@@ -123,8 +123,11 @@ The shipped extensions double as examples:
 | `example.py` | No | Deliberately a no-op; copy this to start |
 | `fix_cite_template.py` | No | Rewrites `Cite*` anonymous parameters with `{{!}}` |
 | `rm_undefined_refs.py` | No | Removes self-closing named refs with no definition |
-| `rm_void_template.py` | Yes | Removes templates redirecting to `Template:Void` (bot_db cached) |
-| `category_handler.py` | Yes | Converts/redirects category links (bot_db cached, OpenCC optional) |
+| `rm_void_template.py` | Yes | Removes templates redirecting to `Template:Void` (preloaded alias set + redirect chains) |
+| `category_handler.py` | Yes | Converts/redirects category links (bot_db cached, NoteTA/CGroup + OpenCC) |
+| `category_policy.py` | No | QW:CAT prefix / duplicate link / sort key / `catnav` rules |
+| `cangjie.py` | Yes | NoteTA/CGroup + OpenCC visible-text conversion (`enable_cangjie`) |
+| `lint_fixes.py` | No | Obsolete tags/attributes, self-closing tags, headings, image sizes, sort keys |
 
 ## Testing locally
 

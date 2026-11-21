@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import os
+import sqlite3
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +46,14 @@ from src.Yugong.utilities.signature_parser import (
     parse_cn_date,
     parse_timestamp,
 )
+from src.Yugong.utilities.urls import (
+    api_url,
+    base_url,
+    host_of,
+    is_supported_url,
+    scheme_of,
+    script_path,
+)
 
 
 class LockTest(unittest.TestCase):
@@ -78,6 +87,14 @@ class LockTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             with mock.patch.object(lock_module, "LOCK_PATH", Path(tmp) / "lock"):
                 lock_module.unlock()
+
+    def test_unlock_does_not_delete_another_processs_lock(self) -> None:
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "lock"
+            target.write_text("999999", encoding="utf-8")
+            with mock.patch.object(lock_module, "LOCK_PATH", target):
+                lock_module.unlock()
+            self.assertTrue(target.exists())
 
 
 class HeartbeatTest(unittest.TestCase):
@@ -326,6 +343,81 @@ class BotDBTest(unittest.TestCase):
             db = BotDB(db_path=Path(tmp) / "db.sqlite3")
             db.insert("alias", {"title": "A", "target": ["x", "y"]})
             self.assertEqual(db.search("alias", {"title": "A"})[0]["target"], ["x", "y"])
+
+    def test_a_legacy_database_is_migrated(self) -> None:
+        """Old databases lack ``template.type`` / ``category.sort_index``."""
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "db.sqlite3"
+            with sqlite3.connect(path) as conn:
+                conn.execute(
+                    "CREATE TABLE template (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "title TEXT NOT NULL, target TEXT NOT NULL)"
+                )
+                conn.execute(
+                    "CREATE TABLE category (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "title TEXT NOT NULL, target TEXT NOT NULL)"
+                )
+
+            db = BotDB(db_path=path)
+            self.assertTrue(
+                db.insert("template", {"title": "A", "target": "B", "type": "void"})
+            )
+            self.assertTrue(
+                db.insert("category", {"title": "C", "target": "D", "sort_index": "x"})
+            )
+            self.assertEqual(db.search("template", {"title": "A"})[0]["type"], "void")
+
+    def test_table_and_column_names_are_not_interpolated(self) -> None:
+        with TemporaryDirectory() as tmp:
+            db = BotDB(db_path=Path(tmp) / "db.sqlite3")
+            self.assertEqual(db.search("template; DROP TABLE template", {}), [])
+            self.assertEqual(db.search("template", {"title = 1 OR 1=1 --": "x"}), [])
+            self.assertEqual(
+                db.search("template", {}, limit="1; DROP TABLE template"), []  # type: ignore[arg-type]
+            )
+            self.assertTrue(db.insert("template", {"title": "A", "target": "B"}))
+            self.assertEqual(len(db.search("template", {"title": "A"})), 1)
+
+
+class UrlHelpersTest(unittest.TestCase):
+    def test_base_url_accepts_every_spelling(self) -> None:
+        for value in (
+            "https://wiki.example/",
+            "https://wiki.example",
+            "https://wiki.example/api.php",
+            "  https://wiki.example/  ",
+        ):
+            self.assertEqual(base_url(value), "https://wiki.example/")
+
+    def test_base_url_keeps_an_install_path(self) -> None:
+        self.assertEqual(base_url("https://wiki.example/w/api.php"), "https://wiki.example/w/")
+        self.assertEqual(
+            base_url("https://wiki.example/w/"), "https://wiki.example/w/"
+        )
+
+    def test_api_url_is_built_from_the_directory(self) -> None:
+        self.assertEqual(
+            api_url("https://wiki.example/"), "https://wiki.example/api.php"
+        )
+        self.assertEqual(
+            api_url("https://wiki.example/api.php"), "https://wiki.example/api.php"
+        )
+
+    def test_script_path_matches_the_install_directory(self) -> None:
+        self.assertEqual(script_path("https://wiki.example/"), "")
+        self.assertEqual(script_path("https://wiki.example/w/api.php"), "/w")
+
+    def test_invalid_endpoints_are_rejected(self) -> None:
+        self.assertFalse(is_supported_url(""))
+        self.assertFalse(is_supported_url("wiki.example.com"))
+        self.assertFalse(is_supported_url("ftp://wiki.example.com/"))
+        self.assertFalse(is_supported_url("https://user:secret@wiki.example/"))
+        self.assertTrue(is_supported_url("https://wiki.example/"))
+
+    def test_host_and_scheme(self) -> None:
+        self.assertEqual(host_of("https://wiki.example:8443/w/api.php"), "wiki.example:8443")
+        self.assertEqual(scheme_of("http://wiki.example/"), "http")
+        self.assertEqual(scheme_of(""), "https")
 
 
 class PathHelperTest(unittest.TestCase):

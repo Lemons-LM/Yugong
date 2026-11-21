@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import ssl
 import traceback
 from email.header import Header
 from email.mime.text import MIMEText
@@ -56,9 +57,15 @@ class Mailer:
         msg["Subject"] = Header(subject, "utf-8").encode()
 
         try:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            # A hard timeout: a final report must never hang a cron job.
+            with smtplib.SMTP(
+                SMTP_SERVER, SMTP_PORT, timeout=max(1, int(settings.request_timeout))
+            ) as server:
                 server.ehlo()
-                server.starttls()
+                # Without an explicit context, smtplib uses an unverified
+                # SSLContext (check_hostname=False, verify_mode=0), so a MITM
+                # could harvest MAIL_PASSWORD.
+                server.starttls(context=ssl.create_default_context())
                 server.ehlo()
                 server.login(self.mail_account, self.mail_password)
                 server.sendmail(self.mail_account, recipients, msg.as_string())

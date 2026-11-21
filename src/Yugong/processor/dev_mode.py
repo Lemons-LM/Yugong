@@ -72,5 +72,7 @@ def run_dev_mode(
         print("No extensions made any changes.")
 
     result = str(wikitext.wikitext)
-    Path(output_path).write_text(result, encoding="utf-8")
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(result, encoding="utf-8")
     print(f"Output written to {output_path} ({len(result)} chars)")
