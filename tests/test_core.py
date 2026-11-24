@@ -116,6 +116,43 @@ class TemplateFormatterTest(unittest.TestCase):
         )
         self.assertEqual(self.apply("{{old|inner=X}}"), "X")
 
+    def test_a_replacement_exposing_another_rule_is_applied_in_one_call(self) -> None:
+        self.add_rule(
+            names=["Outer"], template_level={"replace": "{{Inner}}"}
+        )
+        self.add_rule(
+            names=["Inner"], template_level={"replace": "done"}
+        )
+        self.assertEqual(self.apply("{{Outer}}"), "done")
+
+    def test_skip_if_all_empty_keeps_the_template_when_every_param_is_blank(self) -> None:
+        self.add_rule(
+            names=["old"],
+            template_level={
+                "replace": "[[{{{1|}}}]]",
+                "skip_if_all_empty": ["1"],
+            },
+        )
+        self.assertEqual(self.apply("{{old}}"), "{{old}}")
+        self.assertEqual(self.apply("{{old|}}"), "{{old|}}")
+        self.assertEqual(self.apply("{{old|X}}"), "[[X]]")
+
+    def test_skip_if_all_empty_is_only_valid_with_replace(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(
+                names=["old"],
+                template_level={"delete": True, "skip_if_all_empty": ["1"]},
+            )
+        self.assertIn("only meaningful with 'replace'", str(ctx.exception))
+
+    def test_skip_if_all_empty_must_be_a_string_list(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self.add_rule(
+                names=["old"],
+                template_level={"replace": "x", "skip_if_all_empty": "1"},
+            )
+        self.assertIn("list of parameter names", str(ctx.exception))
+
     def test_param_rename(self) -> None:
         self.add_rule(
             names=["old"],

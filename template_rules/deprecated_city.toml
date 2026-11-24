@@ -1,6 +1,7 @@
-introduction = "Replace the deprecated {{ 城市 }} wrapper with {{ Infobox settlement }} using the wrapper defined by the wiki."
+introduction = "Replace the deprecated {{ 城市 }} wrapper with {{ Infobox settlement }}, keeping only the parameters the call supplied."
 apply_websites = [ "qiuwenbaike.cn",]
 names = [ "城市",]
 
 [template_level]
+drop_unsourced_params = true
 replace = "{{infobox settlement\n|name={{{城市名称|}}} \n|native_name={{{外文名称|}}}\n|other_name={{{其他外文名称|}}}\n|settlement_type=城市\n|image_skyline={{{代表图像|}}}\n|image_shield={{{市徽|}}}\n|image_flag={{{市旗|}}}\n|subdivision_type=國家\n|subdivision_name={{{国家|}}}\n|subdivision_type2=省\n|subdivision_name2={{{省|}}}\n|coordinates    = {{{coordinates|}}}\n|pushpin_map = {{{國家英文名稱|}}}\n|elevation_m={{{海拔|}}}\n|area_total_km2={{{面积|}}}\n|population_total={{{人口|}}}\n|population_as_of={{{统计时间|}}}\n|population_density_km2={{{人口密度|}}}\n|leader_title=[[市长]]\n|leader_name={{{市长|}}}\n|established_title=建立時間\n|established_date={{{建城时间|}}}\n|timezone ={{{时区|}}}\n|timezone_DST = {{{夏令时区|}}}\n|postal_code_type=郵政編碼\n|postal_code={{{郵政編碼|}}}\n|area_code={{{電話編碼|}}}\n|image_map={{{地图档名|}}}\n|image_size={{{大小|}}}\n|website={{{网址|{{{url|}}}}}}\n}}"

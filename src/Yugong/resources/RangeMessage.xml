@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <!-- the content here is gh:Kelly-Hsueh/ISBN-normaliser-forMGP](https://github.com/Kelly-Hsueh/ISBN-normaliser-forMGP).
 Which was shared under the MIT Licence as below:
 
@@ -24,7 +25,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
  -->
-<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE ISBNRangeMessage [
 <!ELEMENT ISBNRangeMessage (MessageSource?, MessageSerialNumber?, MessageDate, EAN.UCCPrefixes, RegistrationGroups) >
 <!ELEMENT MessageSource (#PCDATA) >

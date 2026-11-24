@@ -47,6 +47,12 @@ VOID_ALIAS_TTL_SECONDS: int = 7 * 24 * 60 * 60
 #: Maximum redirect levels to follow (A -> B -> Void).
 MAX_REDIRECT_DEPTH: int = 5
 
+#: Characters MediaWiki does not allow in a page title.  A parser function such
+#: as ``{{#if:...}}`` is parsed by mwparserfromhell as a template named
+#: ``#if:...``; it is an invocation, not a ``Template:`` page, and handing it to
+#: ``pywikibot.Page`` raises ``InvalidTitleError``.
+_INVALID_TITLE_CHARS: frozenset[str] = frozenset("#<>[]{}\n\r|")
+
 #: In-process normalised alias set, loaded once per process/day.
 _alias_keys: set[str] | None = None
 _aliases_loaded: bool = False
@@ -65,6 +71,18 @@ def _normalize_title(title: str) -> str:
 def _is_void_target(title: str) -> bool:
     """Return ``True`` if *title* is some spelling of ``Template:Void``."""
     return _normalize_title(title) == VOID_TARGET
+
+
+def _is_lookupable_template_name(name: str) -> bool:
+    """Whether *name* can be a real ``Template:`` page title.
+
+    Parser functions (``{{#if:...}}``), magic words and names with characters
+    MediaWiki forbids in titles must never reach ``pywikibot.Page``.
+    """
+    name = name.strip()
+    if not name or name.startswith("#"):
+        return False
+    return not any(char in _INVALID_TITLE_CHARS for char in name)
 
 
 def _cache_keys(name: str) -> tuple[str, ...]:
@@ -241,6 +259,8 @@ def _is_void_template(name: str) -> bool:
     name = name.strip()
     if name.lower().startswith(("template:", "模板:")):
         name = name.split(":", 1)[1].strip()
+    if not _is_lookupable_template_name(name):
+        return False
 
     _load_void_aliases()
 
@@ -284,7 +304,7 @@ def rm_void_template_job(wikitext: Wikitext) -> None:
         if not _still_attached(wikitext, template):
             continue
         name = str(template.name).strip().replace("_", " ")
-        if not name:
+        if not _is_lookupable_template_name(name):
             continue
         if _is_void_template(name):
             wikitext.wikitext.remove(template)

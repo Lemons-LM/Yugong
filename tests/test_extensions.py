@@ -12,6 +12,8 @@ from src.Yugong.core.wikitext import Wikitext
 from src.Yugong.extensions import category_handler as ch
 from src.Yugong.extensions import example as ex
 from src.Yugong.extensions import fix_cite_template as fc
+from src.Yugong.extensions import fix_duplicate_refs as fdr
+from src.Yugong.extensions import fix_unclosed_syntax as fus
 from src.Yugong.extensions import rm_undefined_refs as rr
 from src.Yugong.extensions import rm_void_template as rv
 
@@ -56,9 +58,28 @@ class FixCiteTemplateTest(unittest.TestCase):
         text = "{{Cite web|url=http://x|title=Foo}}"
         self.assertEqual(run_job(fc.fix_cite_template_job, text), text)
 
-    def test_anonymous_url_without_url_key_is_untouched(self) -> None:
-        text = "{{Cite web|http://example.com|Foo|title=Bar}}"
-        self.assertEqual(run_job(fc.fix_cite_template_job, text), text)
+    def test_leading_anonymous_parameters_are_removed(self) -> None:
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|Foo|title=Bar}}"),
+            "{{Cite web|title=Bar}}",
+        )
+        self.assertEqual(
+            run_job(
+                fc.fix_cite_template_job,
+                "{{Cite web|http://example.com|Foo|title=Bar}}",
+            ),
+            "{{Cite web|title=Bar}}",
+        )
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|A|B|title=Bar|C}}"),
+            "{{Cite web|title=Bar{{!}}C}}",
+        )
+
+    def test_template_with_only_leading_anonymous_params(self) -> None:
+        self.assertEqual(
+            run_job(fc.fix_cite_template_job, "{{Cite web|orphan}}"),
+            "{{Cite web}}",
+        )
 
     def test_single_anonymous_param_is_untouched(self) -> None:
         text = "{{Citation|http://x}}"
@@ -71,11 +92,34 @@ class FixCiteTemplateTest(unittest.TestCase):
     def test_template_without_anonymous_params_is_untouched(self) -> None:
         self.assertEqual(run_job(fc.fix_cite_template_job, "{{Cite book}}"), "{{Cite book}}")
 
-    def test_nested_cite_templates_do_not_crash_on_detached_nodes(self) -> None:
-        text = "{{Cite web|url=http://x|Foo|title={{Cite book|url=http://y|Bar}}}}"
-        result = run_job(fc.fix_cite_template_job, text)
-        self.assertIn("{{!}}", result)
-        self.assertIn("{{Cite book|url=http://y|Bar}}", result)
+    def test_nested_cite_template_is_removed(self) -> None:
+        self.assertEqual(
+            run_job(
+                fc.fix_cite_template_job,
+                "{{Cite web|url=http://x|Foo|"
+                "title={{Cite book|url=http://y|Bar}}}}",
+            ),
+            "{{Cite web|url=http://x{{!}}Foo|title=}}",
+        )
+
+    def test_nested_cite_is_removed_even_without_other_problems(self) -> None:
+        self.assertEqual(
+            run_job(
+                fc.fix_cite_template_job,
+                "{{Cite web|url=http://x|title={{Cite book|url=http://y}}}}",
+            ),
+            "{{Cite web|url=http://x|title=}}",
+        )
+
+    def test_nested_cite_inside_a_title_leaves_the_trailing_fragment(self) -> None:
+        self.assertEqual(
+            run_job(
+                fc.fix_cite_template_job,
+                "{{Cite web|url=http://example.net|"
+                "title={{Cite web|url=http://inner|Bad}}|尾部片段}}",
+            ),
+            "{{Cite web|url=http://example.net|title=尾部片段}}",
+        )
 
     def test_intro_mentions_cite(self) -> None:
         self.assertIn("Cite", fc.fix_cite_template_intro())
@@ -103,8 +147,135 @@ class RmUndefinedRefsTest(unittest.TestCase):
     def test_removes_every_ref_when_none_is_defined(self) -> None:
         self.assertEqual(run_job(rr.rm_undefined_refs_job, 'A<ref name="q" />B<ref name="q" />'), "AB")
 
+    def test_removes_an_empty_definition(self) -> None:
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, 'A<ref name="e"></ref>B'),
+            "AB",
+        )
+
+    def test_removes_a_whitespace_only_definition(self) -> None:
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, 'A<ref name="e">   </ref>B'),
+            "AB",
+        )
+
+    def test_removes_a_contentless_ref_with_an_empty_name(self) -> None:
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, 'A<ref name="" />B'),
+            "AB",
+        )
+
+    def test_removing_a_ref_on_its_own_line_keeps_the_paragraph(self) -> None:
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, 'A\n<ref name="x" />\nB'),
+            "A\nB",
+        )
+        self.assertEqual(
+            run_job(
+                rr.rm_undefined_refs_job,
+                'A\n<ref name="x" />\n<ref name="y" />\nB',
+            ),
+            "A\nB",
+        )
+
+    def test_removing_an_inline_ref_keeps_the_line(self) -> None:
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, 'A<ref name="x" />B'),
+            "AB",
+        )
+
+    def test_empty_name_does_not_count_as_a_definition(self) -> None:
+        text = 'A<ref name="">C</ref>B<ref name="" />'
+        self.assertEqual(
+            run_job(rr.rm_undefined_refs_job, text),
+            'A<ref name="">C</ref>B',
+        )
+
     def test_intro_mentions_ref(self) -> None:
         self.assertIn("ref", rr.rm_undefined_refs_intro())
+
+
+class FixDuplicateRefsTest(unittest.TestCase):
+    def test_conflicting_repeat_definition_gets_a_suffix(self) -> None:
+        self.assertEqual(
+            run_job(
+                fdr.fix_duplicate_refs_job,
+                '<ref name="dup">第一次</ref><ref name="dup">第二次</ref>',
+            ),
+            '<ref name="dup">第一次</ref><ref name="dup-1">第二次</ref>',
+        )
+
+    def test_each_later_definition_gets_the_next_suffix(self) -> None:
+        self.assertEqual(
+            run_job(
+                fdr.fix_duplicate_refs_job,
+                '<ref name="dup">一</ref><ref name="dup">二</ref>'
+                '<ref name="dup">三</ref>',
+            ),
+            '<ref name="dup">一</ref><ref name="dup-1">二</ref>'
+            '<ref name="dup-2">三</ref>',
+        )
+
+    def test_existing_suffix_is_not_reused(self) -> None:
+        self.assertEqual(
+            run_job(
+                fdr.fix_duplicate_refs_job,
+                '<ref name="dup-1">已有</ref>'
+                '<ref name="dup">一</ref><ref name="dup">二</ref>',
+            ),
+            '<ref name="dup-1">已有</ref>'
+            '<ref name="dup">一</ref><ref name="dup-2">二</ref>',
+        )
+
+    def test_identical_repeat_definition_is_kept(self) -> None:
+        text = '<ref name="dup">相同</ref><ref name="dup">相同</ref>'
+        self.assertEqual(run_job(fdr.fix_duplicate_refs_job, text), text)
+
+    def test_unnamed_refs_are_ignored(self) -> None:
+        text = "<ref>A</ref><ref>B</ref>"
+        self.assertEqual(run_job(fdr.fix_duplicate_refs_job, text), text)
+
+    def test_same_name_in_different_groups_is_not_a_duplicate(self) -> None:
+        text = '<ref name="d" group="a">A</ref><ref name="d" group="b">B</ref>'
+        self.assertEqual(run_job(fdr.fix_duplicate_refs_job, text), text)
+
+    def test_extra_attributes_are_preserved(self) -> None:
+        self.assertEqual(
+            run_job(
+                fdr.fix_duplicate_refs_job,
+                '<ref name="d" group="g">A</ref><ref name="d" group="g">B</ref>',
+            ),
+            '<ref name="d" group="g">A</ref><ref name="d-1" group="g">B</ref>',
+        )
+
+    def test_intro_mentions_ref(self) -> None:
+        self.assertIn("ref", fdr.fix_duplicate_refs_intro())
+
+
+class FixUnclosedSyntaxTest(unittest.TestCase):
+    def test_closes_each_unclosed_construct_on_its_line(self) -> None:
+        text = "[[Link|未闭合的链接\n{{Unclosed|a=b\n<!-- 未闭合的注释\n"
+        self.assertEqual(
+            run_job(fus.fix_unclosed_syntax_job, text),
+            "[[Link|未闭合的链接]]\n{{Unclosed|a=b}}\n<!-- 未闭合的注释 -->\n",
+        )
+
+    def test_balanced_markup_is_untouched(self) -> None:
+        text = "[[Link|文字]] {{T|a=b}} <!-- 注释 -->\n"
+        self.assertEqual(run_job(fus.fix_unclosed_syntax_job, text), text)
+
+    def test_stray_closers_are_ignored(self) -> None:
+        text = "多余的右花括号：这行没有左花括号 }}\n"
+        self.assertEqual(run_job(fus.fix_unclosed_syntax_job, text), text)
+
+    def test_nested_openers_on_one_line_are_closed_inside_out(self) -> None:
+        self.assertEqual(
+            run_job(fus.fix_unclosed_syntax_job, "[[A|{{B\n"),
+            "[[A|{{B}}]]\n",
+        )
+
+    def test_intro_mentions_unterminated(self) -> None:
+        self.assertIn("unterminated", fus.fix_unclosed_syntax_intro())
 
 
 class RmVoidTemplateTest(unittest.TestCase):
@@ -119,6 +290,21 @@ class RmVoidTemplateTest(unittest.TestCase):
     def test_normalises_void_targets(self) -> None:
         for title in ("Template:Void", "template:void", "  TEMPLATE: VOID ", "模板:Void"):
             self.assertTrue(rv._is_void_target(title), title)
+
+    def test_parser_functions_are_not_page_titles(self) -> None:
+        for name in ("#if:中文条目", "#expr:1", "A|B", "A[0]", ""):
+            self.assertFalse(rv._is_lookupable_template_name(name), name)
+        self.assertTrue(rv._is_lookupable_template_name("Navbox"))
+
+    def test_parser_function_is_not_looked_up(self) -> None:
+        with mock.patch.object(rv, "_load_void_aliases", return_value=None), \
+             mock.patch.object(rv, "_resolve_redirect_target") as resolver:
+            self.assertFalse(rv._is_void_template("#if:中文条目"))
+            resolver.assert_not_called()
+
+    def test_job_keeps_parser_functions(self) -> None:
+        text = "{{#if:1|a|b}}"
+        self.assertEqual(run_job(rv.rm_void_template_job, text), text)
 
     def test_other_targets_are_not_void(self) -> None:
         for title in ("Template:Void2", "Template:Foo", ""):

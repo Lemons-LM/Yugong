@@ -22,6 +22,13 @@ from src.Yugong.utilities.check_same_website import check_same_website
 from src.Yugong.utilities.path_helper import PROJECT_ROOT
 
 
+#: Maximum number of matching rounds.  A replacement can expose a nested
+#: deprecated template, and a rename can produce another rule's name; one more
+#: round is enough for the shipped rules, and the bound stops a pathological
+#: rule from looping forever.
+MAX_RULE_PASSES: int = 10
+
+
 class TemplateFormatter:
     """Applies template rules to the templates found on a page."""
 
@@ -31,15 +38,40 @@ class TemplateFormatter:
     loaded: bool = False
 
     def format_template(self, wikitext: Wikitext) -> None:
-        """Apply every matching rule to every template on the page."""
+        """Apply every matching rule to every template on the page.
+
+        The page is rescanned until no rule makes a change: replacing an outer
+        template can detach (or expose) a nested one, and that nested template
+        must get its own rule in the same run.
+        """
         code = wikitext.wikitext
         if code is None:
             return
 
-        for template in list(code.filter_templates()):
-            rule = self.RULES.get(self._safe_capitalize(str(template.name)))
-            if rule:
+        for _ in range(MAX_RULE_PASSES):
+            changed = False
+            for template in list(code.filter_templates()):
+                rule = self.RULES.get(self._safe_capitalize(str(template.name)))
+                if rule is None:
+                    continue
+                # A previous delete/replace in this round may have detached
+                # this nested template; editing a detached node raises.
+                if not self._still_attached(code, template):
+                    continue
+
+                before = str(template)
                 self.apply_template_rule(code=code, template=template, rule=rule)
+                if str(template) != before or not self._still_attached(code, template):
+                    changed = True
+
+            if not changed:
+                return
+
+        logger.warning(
+            "Template rules did not converge after %d passes; "
+            "the page may contain a self-reproducing rule",
+            MAX_RULE_PASSES,
+        )
 
     def apply_template_rule(
         self,
@@ -61,9 +93,21 @@ class TemplateFormatter:
 
         if template_level.get("replace"):
             if self._still_attached(code, template):
+                if self._all_listed_params_empty(
+                    template, template_level.get("skip_if_all_empty")
+                ):
+                    logger.info(
+                        "Skipping replacement of %s: every parameter in "
+                        "skip_if_all_empty is empty",
+                        str(template.name).strip(),
+                    )
+                    return
+                replacement = template_level["replace"]
+                if template_level.get("drop_unsourced_params"):
+                    replacement = self._prune_unsourced_params(template, replacement)
                 code.replace(
                     template,
-                    self._render_replacement(template, template_level["replace"]),
+                    self._render_replacement(template, replacement),
                 )
             return
 
@@ -79,6 +123,27 @@ class TemplateFormatter:
     ) -> bool:
         """Return whether *template* is still part of *code*'s tree."""
         return any(node is template for node in code.filter_templates())
+
+    @staticmethod
+    def _all_listed_params_empty(
+        template: mph.wikicode.Template, names: Any
+    ) -> bool:
+        """Whether every parameter in *names* is missing or blank.
+
+        Used by ``skip_if_all_empty``: a deprecated wrapper with no usable
+        target (for example ``{{Ilh}}`` or ``{{Translink}}``) must not be
+        replaced with an empty link such as ``[[]]``.
+        """
+        if not names:
+            return False
+        for name in names:
+            try:
+                value = str(template.get(str(name)).value).strip()
+            except ValueError:
+                value = ""
+            if value:
+                return False
+        return True
 
     @staticmethod
     def _argument_attached(code: mph.wikicode.Wikicode, node: mph.nodes.Node) -> bool:
@@ -124,6 +189,103 @@ class TemplateFormatter:
                 new_code.replace(node, mph.parse(resolved))
 
         return new_code
+
+    @staticmethod
+    def _split_template(replacement: str) -> tuple[str, list[str]] | None:
+        """Split ``{{name|p1|p2…}}`` on its top-level pipes.
+
+        mwparserfromhell cannot parse wrappers that use unclosed ``<td>`` rows
+        inside a parser function, so the outer template is split textually.
+        The scanner understands nested ``{{}}``/``{{{}}}``, wikilinks, HTML
+        comments and HTML tags.
+        """
+        text = replacement.strip()
+        if not (text.startswith("{{") and text.endswith("}}")):
+            return None
+        inner = text[2:-2]
+
+        parts: list[str] = []
+        current: list[str] = []
+        stack: list[str] = []
+        index = 0
+
+        while index < len(inner):
+            if inner.startswith("<!--", index):
+                end = inner.find("-->", index + 4)
+                if end == -1:
+                    return None
+                current.append(inner[index : end + 3])
+                index = end + 3
+                continue
+
+            if inner[index] == "<" and index + 1 < len(inner) and (
+                inner[index + 1].isalpha() or inner.startswith("</", index)
+            ):
+                end = inner.find(">", index + 1)
+                if end != -1:
+                    current.append(inner[index : end + 1])
+                    index = end + 1
+                    continue
+
+            for opener, closer in (("{{{", "}}}"), ("{{", "}}"), ("[[", "]]")):
+                if inner.startswith(opener, index):
+                    stack.append(closer)
+                    current.append(opener)
+                    index += len(opener)
+                    break
+            else:
+                for closer in ("}}}", "}}", "]]"):
+                    if inner.startswith(closer, index):
+                        if stack and stack[-1] == closer:
+                            stack.pop()
+                        current.append(closer)
+                        index += len(closer)
+                        break
+                else:
+                    if inner[index] == "|" and not stack:
+                        parts.append("".join(current))
+                        current = []
+                    else:
+                        current.append(inner[index])
+                    index += 1
+
+        parts.append("".join(current))
+        return parts[0], parts[1:]
+
+    @classmethod
+    def _prune_unsourced_params(
+        cls, template: mph.wikicode.Template, replacement: str
+    ) -> str:
+        """Drop generated parameters no supplied source parameter feeds.
+
+        A wrapper such as ``{{城市}}`` expands to a full ``{{Infobox
+        settlement}}`` skeleton.  Emitting every parameter (including the
+        dozens that were never supplied, and the wrapper's fixed labels) bloats
+        the page.  With ``drop_unsourced_params = true`` only generated
+        parameters whose value references at least one *non-empty* parameter of
+        the original template are kept.
+        """
+        split = cls._split_template(replacement)
+        if split is None:
+            return replacement
+        name, params = split
+
+        sources = {
+            str(param.name).strip(): str(param.value).strip()
+            for param in template.params
+        }
+        kept: list[str] = []
+        for param in params:
+            argument_names = {
+                str(argument.name).strip()
+                for argument in mph.parse(param).filter_arguments(recursive=True)
+            }
+            if any(sources.get(argument) for argument in argument_names):
+                kept.append(param)
+
+        if not kept:
+            return "{{" + name + "}}"
+        return "{{" + name + "".join(f"|{param}" for param in kept) + "}}"
 
     @staticmethod
     def apply_param_rule(template: mph.wikicode.Template, param_config: dict[str, Any]) -> None:
@@ -286,6 +448,31 @@ class TemplateFormatter:
             raise ValueError(
                 f"Template rule {file_name}: template_level.replace must be a string."
             )
+        for key in ("drop_unsourced_params",):
+            if key in template_level and not isinstance(template_level[key], bool):
+                raise ValueError(
+                    f"Template rule {file_name}: template_level.{key} must be a boolean."
+                )
+        if template_level.get("drop_unsourced_params") and not template_level.get("replace"):
+            raise ValueError(
+                f"Template rule {file_name}: template_level.drop_unsourced_params "
+                "is only meaningful with 'replace'."
+            )
+
+        skip_names = template_level.get("skip_if_all_empty")
+        if skip_names is not None:
+            if not isinstance(skip_names, list) or not all(
+                isinstance(name, str) and name for name in skip_names
+            ):
+                raise ValueError(
+                    f"Template rule {file_name}: template_level.skip_if_all_empty "
+                    "must be a list of parameter names."
+                )
+            if not template_level.get("replace"):
+                raise ValueError(
+                    f"Template rule {file_name}: template_level.skip_if_all_empty "
+                    "is only meaningful with 'replace'."
+                )
 
         actions = [key for key in ("delete", "replace", "rename") if template_level.get(key)]
         if len(actions) > 1:

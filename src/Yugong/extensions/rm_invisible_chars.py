@@ -28,6 +28,7 @@ text; set ``invisible_chars_aggressive = true`` to remove those as well.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import mwparserfromhell as mph
 
@@ -84,6 +85,23 @@ def _clean_text(text: str, aggressive: bool) -> tuple[str, int]:
     return cleaned, len(text) - len(cleaned)
 
 
+def _clean_field(obj: Any, attribute: str, aggressive: bool) -> int:
+    """Clean ``obj.<attribute>``, restoring it if cleaning would empty it.
+
+    A template/tag/link name made only of invisible characters would otherwise
+    become an empty name: ``{{​}}`` turns into the invalid ``{{}}`` and
+    ``[[​]]`` into ``[[]]``.  Keeping the original name leaves work for a human
+    instead of emitting wikitext that cannot render.
+    """
+    field = getattr(obj, attribute)
+    original = str(field)
+    removed = _clean_wikicode(field, aggressive)
+    if removed and not str(field).strip():
+        setattr(obj, attribute, original)
+        return 0
+    return removed
+
+
 def _clean_wikicode(code: mph.wikicode.Wikicode, aggressive: bool) -> int:
     """Clean every text-bearing node in *code* in place; return the count."""
     removed = 0
@@ -95,18 +113,21 @@ def _clean_wikicode(code: mph.wikicode.Wikicode, aggressive: bool) -> int:
                 removed += count
 
         elif isinstance(node, mph.nodes.Tag):
-            name, count = _clean_text(str(node.tag), aggressive)
+            original_tag = str(node.tag)
+            cleaned_tag, count = _clean_text(original_tag, aggressive)
+            if count and not cleaned_tag.strip():
+                # Never turn a tag into ``<>``; leave the original name alone.
+                cleaned_tag, count = original_tag, 0
             removed += count
             if count:
-                node.tag = name
-            if name.strip().lower() in PROTECTED_TAGS:
+                node.tag = cleaned_tag
+            if cleaned_tag.strip().lower() in PROTECTED_TAGS:
                 continue
 
             for attribute in node.attributes:
-                removed += _clean_wikicode(attribute.name, aggressive)
-                attribute_value = attribute.value
-                if attribute_value is not None:
-                    removed += _clean_wikicode(attribute_value, aggressive)
+                removed += _clean_field(attribute, "name", aggressive)
+                if attribute.value is not None:
+                    removed += _clean_wikicode(attribute.value, aggressive)
             contents = node.contents
             if contents is not None:
                 removed += _clean_wikicode(contents, aggressive)
@@ -115,23 +136,23 @@ def _clean_wikicode(code: mph.wikicode.Wikicode, aggressive: bool) -> int:
             removed += _clean_wikicode(node.title, aggressive)
 
         elif isinstance(node, mph.nodes.Wikilink):
-            removed += _clean_wikicode(node.title, aggressive)
+            removed += _clean_field(node, "title", aggressive)
             if node.text is not None:
                 removed += _clean_wikicode(node.text, aggressive)
 
         elif isinstance(node, mph.nodes.ExternalLink):
-            removed += _clean_wikicode(node.url, aggressive)
+            removed += _clean_field(node, "url", aggressive)
             if node.title is not None:
                 removed += _clean_wikicode(node.title, aggressive)
 
         elif isinstance(node, mph.nodes.Template):
-            removed += _clean_wikicode(node.name, aggressive)
+            removed += _clean_field(node, "name", aggressive)
             for param in node.params:
-                removed += _clean_wikicode(param.name, aggressive)
+                removed += _clean_field(param, "name", aggressive)
                 removed += _clean_wikicode(param.value, aggressive)
 
         elif isinstance(node, mph.nodes.Argument):
-            removed += _clean_wikicode(node.name, aggressive)
+            removed += _clean_field(node, "name", aggressive)
             if node.default is not None:
                 removed += _clean_wikicode(node.default, aggressive)
 
@@ -140,7 +161,7 @@ def _clean_wikicode(code: mph.wikicode.Wikicode, aggressive: bool) -> int:
     return removed
 
 
-@job
+@job(pre_template=True)
 def rm_invisible_chars_job(wikitext: Wikitext) -> None:
     """Remove invisible Unicode characters from the page."""
     if not settings.enable_invisible_chars_fix:

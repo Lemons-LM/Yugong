@@ -221,3 +221,5 @@ apicache/
 
 # Local
 docs/wiki/
+result/
+devtest/

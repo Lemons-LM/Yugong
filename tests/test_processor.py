@@ -22,7 +22,10 @@ from src.Yugong.processor.do_jobs import (
 )
 from src.Yugong.processor.pipeline import TEMPLATE_RULE_STEP, apply_steps, build_steps
 from src.Yugong.utilities.check_heartbeat import heartbeat_content, record_heartbeat
-from src.Yugong.utilities.mark_job_intro import NEEDS_WIKI_ATTR
+from src.Yugong.utilities.mark_job_intro import (
+    NEEDS_WIKI_ATTR,
+    PRE_TEMPLATE_ATTR,
+)
 
 from tests.support import make_wikitext
 
@@ -35,7 +38,12 @@ def _wiki_job(wikitext: Wikitext) -> None:
     return None
 
 
+def _pre_job(wikitext: Wikitext) -> None:
+    return None
+
+
 setattr(_wiki_job, NEEDS_WIKI_ATTR, True)
+setattr(_pre_job, PRE_TEMPLATE_ATTR, True)
 
 
 class DiffSizeTest(unittest.TestCase):
@@ -140,6 +148,26 @@ class PipelineTest(unittest.TestCase):
         wikitext = make_wikitext("a")
         steps, _ = build_steps(wikitext, jobs=[_plain_job])
         self.assertEqual(steps[0][0], TEMPLATE_RULE_STEP)
+
+    def test_pre_template_jobs_run_before_template_rules(self) -> None:
+        wikitext = make_wikitext("a")
+        steps, _ = build_steps(wikitext, jobs=[_plain_job, _pre_job])
+        self.assertEqual(
+            [name for name, _ in steps],
+            ["_pre_job", TEMPLATE_RULE_STEP, "_plain_job"],
+        )
+
+    def test_pre_template_jobs_stay_out_when_wiki_jobs_are_skipped(self) -> None:
+        wikitext = make_wikitext("a")
+        setattr(_pre_job, NEEDS_WIKI_ATTR, True)
+        try:
+            steps, skipped = build_steps(
+                wikitext, apply_rules=False, include_wiki_jobs=False, jobs=[_pre_job]
+            )
+        finally:
+            setattr(_pre_job, NEEDS_WIKI_ATTR, False)
+        self.assertEqual(steps, [])
+        self.assertEqual(skipped, ["_pre_job"])
 
     def test_template_rules_can_be_disabled(self) -> None:
         wikitext = make_wikitext("a")

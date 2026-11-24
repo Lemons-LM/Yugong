@@ -5,9 +5,10 @@ Read from the wiki's ``Qiuwen:格式手册/分类``:
 * Category links use a single canonical ``Category:`` prefix and a page is
   listed at most once.
 * Redundant manual sort keys are removed: empty keys, keys equal to the page
-  title (with or without namespace), and keys made only of deprecated/full-width
-  punctuation.  Meaningful keys (``*``, ``#``, prefixes, pinyin corrections) are
-  kept.
+  title (with or without namespace), keys equal to the category name, keys made
+  only of deprecated/full-width punctuation, and pure pinyin/English indexes
+  such as ``nasty_test`` or ``Japan``.  Meaningful keys (``*``, ``#``, mixed
+  corrections such as ``epang宫``) are kept.
 * Category pages get ``{{catnav|auto=1}}`` at the top when they do not have it
   and are not redirects.
 
@@ -35,6 +36,11 @@ CATEGORY_PREFIXES: tuple[str, ...] = (
 #: Sort keys made only of these are deprecated by QW:CAT.
 REDUNDANT_PUNCT: frozenset[str] = frozenset("·：；？，。！￥＄@:$")
 
+#: QW:CAT discourages pinyin/English sort indexes.  A key made only of ASCII
+#: letters, digits, underscores and spaces (and containing at least one letter)
+#: is one of those indexes, e.g. ``nasty_test`` or ``Japan``.
+_ASCII_SORT_KEY_RE = re.compile(r"[A-Za-z0-9_ ]+")
+
 _CATEGORY_REDIRECT_RE = re.compile(
     r"\{\{\s*(?:分类重定向|分類重新導向|Category redirect|cr|Catredirect)\b",
     re.IGNORECASE,
@@ -54,7 +60,9 @@ def _category_bare(title: str) -> str | None:
     return None
 
 
-def _redundant_sort_key(sort: str, page_title: str) -> bool:
+def _redundant_sort_key(
+    sort: str, page_title: str, category_name: str = ""
+) -> bool:
     sort = sort.strip()
     if not sort:
         return True
@@ -65,10 +73,23 @@ def _redundant_sort_key(sort: str, page_title: str) -> bool:
     if sort in (page_title, bare_title):
         return True
 
+    # A key equal to the category's own name is as meaningless as a key equal
+    # to the page title.
+    if category_name and sort == category_name.strip():
+        return True
+
     if sort[0] in "@:$＠":
         return True
 
-    return all(char in REDUNDANT_PUNCT for char in sort)
+    if all(char in REDUNDANT_PUNCT for char in sort):
+        return True
+
+    # QW:CAT: pinyin/English indexes are usually not allowed.  Keep mixed keys
+    # such as ``epang宫`` (a documented pinyin correction).
+    if _ASCII_SORT_KEY_RE.fullmatch(sort) and any(char.isalpha() for char in sort):
+        return True
+
+    return False
 
 
 def _normalise_links(wikitext: Wikitext) -> None:
@@ -86,7 +107,7 @@ def _normalise_links(wikitext: Wikitext) -> None:
 
         link.title = f"Category:{bare}"
         if link.text is not None and _redundant_sort_key(
-            str(link.text), wikitext.title
+            str(link.text), wikitext.title, bare
         ):
             link.text = None
 

@@ -50,6 +50,10 @@ class InternalLinkHelperRuleTest(_RuleTestBase):
     def test_unrelated_templates_are_untouched(self) -> None:
         self.assertEqual(apply("{{Other|本地条目}}"), "{{Other|本地条目}}")
 
+    def test_missing_target_is_not_replaced_with_an_empty_link(self) -> None:
+        self.assertEqual(apply("{{Ilh}}"), "{{Ilh}}")
+        self.assertEqual(apply("{{Internal link helper/en}}"), "{{Internal link helper/en}}")
+
 
 class TranslinkRuleTest(_RuleTestBase):
     def test_missing_chinese_title_falls_back_to_the_foreign_title(self) -> None:
@@ -68,6 +72,15 @@ class TranslinkRuleTest(_RuleTestBase):
         result = apply("{{Translink|en|Foreign|中文条目|显示名}}")
         self.assertIn("中文条目", result)
         self.assertIn("显示名", result)
+
+    def test_missing_titles_are_not_replaced_with_an_empty_link(self) -> None:
+        self.assertEqual(apply("{{Translink}}"), "{{Translink}}")
+        self.assertEqual(apply("{{Translink|en}}"), "{{Translink|en}}")
+
+    def test_a_nested_template_is_replaced_in_the_same_run(self) -> None:
+        result = apply("{{Font color|blue|x {{Translink|en|Outer|内层}}}}")
+        self.assertNotIn("Translink", result)
+        self.assertIn("内层", result)
 
 
 class InterlanguageLinkMultiRuleTest(_RuleTestBase):
@@ -112,13 +125,31 @@ class OtherReviewedRulesTest(_RuleTestBase):
         self.assertEqual(apply("{{ROC-1938}}"), "伪“[[中華民國維新政府]]”")
         self.assertEqual(apply("{{CHN-1928}}"), "[[中华民国|中国]]")
 
-    def test_city_and_country_wrappers_are_expanded(self) -> None:
+    def test_city_and_country_wrappers_only_output_supplied_parameters(self) -> None:
         city = apply("{{城市|城市名称=测试|人口=100}}")
         self.assertIn("{{infobox settlement", city)
         self.assertIn("name=测试", city)
-        country = apply("{{國家基礎資訊|国家名称=测试}}")
+        self.assertIn("population_total=100", city)
+        # Parameters the editor did not supply must not be expanded.
+        self.assertNotIn("native_name", city)
+        self.assertNotIn("settlement_type", city)
+        self.assertNotIn("leader_title", city)
+
+        country = apply("{{國家基礎資訊|国家名称=测试|國歌名稱=歌}}")
         self.assertIn("{{Infobox country", country)
         self.assertIn("conventional_long_name  = 测试", country)
+        self.assertIn("national_anthem         = 歌", country)
+        self.assertNotIn("capital", country)
+        self.assertNotIn("membership_type", country)
+        self.assertNotIn("established_event2", country)
+        # Every parameter placeholder must have a default; a bare {{{name}}}
+        # would leak into the article as literal text.
+        self.assertNotIn("{{{", country)
+
+    def test_unsupplied_parameters_with_defaults_are_not_expanded(self) -> None:
+        city = apply("{{城市}}")
+        self.assertNotIn("native_name", city)
+        self.assertNotIn("{{{", city)
 
 
 if __name__ == "__main__":

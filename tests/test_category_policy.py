@@ -33,10 +33,22 @@ class SortKeyTest(unittest.TestCase):
         )
 
     def test_meaningful_keys_are_kept(self) -> None:
-        for key in ("key", "*", "#", "上海"):
+        for key in ("*", "#", "上海", "epang宫"):
             self.assertEqual(
                 fix(f"[[Category:X|{key}]]"), f"[[Category:X|{key}]]"
             )
+
+    def test_pinyin_and_english_keys_are_removed(self) -> None:
+        for key in ("key", "nasty_test", "Japan", "Riben", "Abcd"):
+            self.assertEqual(fix(f"[[Category:X|{key}]]"), "[[Category:X]]")
+
+    def test_numeric_keys_are_kept(self) -> None:
+        self.assertEqual(fix("[[Category:X|2000]]"), "[[Category:X|2000]]")
+
+    def test_key_equal_to_the_category_name_is_removed(self) -> None:
+        self.assertEqual(
+            fix("[[Category:第四分类|第四分类]]"), "[[Category:第四分类]]"
+        )
 
     def test_deprecated_punctuation_keys_are_removed(self) -> None:
         for key in ("·", "：", "；", "？", "，", "。", "！", "￥", "@", ":", "$", "@abc"):

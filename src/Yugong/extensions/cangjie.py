@@ -78,7 +78,10 @@ def _opencc_convert(text: str) -> str:
                 )
                 _converter_missing_reported = True
             return text
-        _converter = opencc.OpenCC("t2s.json")
+        # ``tw2s`` (not ``t2s``) resolves the traditional ``著`` particle to the
+        # Mainland ``着`` (e.g. 隨著 -> 随着) instead of leaving a mixed
+        # "随著"; the phrase table keeps 著名/著作 intact.
+        _converter = opencc.OpenCC("tw2s.json")
 
     return str(_converter.convert(text))
 

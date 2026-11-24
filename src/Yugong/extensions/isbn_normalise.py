@@ -36,9 +36,12 @@ The job is a no-op unless ``enable_isbn_normalise = true`` in
 * replaces ``[[Special:BookSources/…]]`` links with ``{{ISBN|…}}`` where the
   link's display text allows it, or with the same link and a corrected ISBN
   target when a display label must be preserved;
-* marks ISBN-shaped values that cannot be trusted instead of silently skipping
-  them: a bad check digit gets the hyphenated form plus the expected digit in a
-  comment, and an unmapped registration range gets a comment saying so;
+* marks untrustworthy ISBNs *while rewriting a ``Special:BookSources`` link
+  whose display text is the ISBN itself*: a bad check digit gets the
+  hyphenated form plus the expected digit in a comment, and an unmapped
+  registration range gets a comment saying so.  Values inside ``{{ISBN}}`` and
+  citation parameters are only rewritten when they are valid; an invalid value
+  is left for the wiki's own ISBN error tracking instead of being annotated;
 * optionally converts ISBN-10 to ISBN-13 (``isbn_convert_10_to_13``);
 * optionally merges a Moegirl-style template whose parameters 1 and 2 are the
   same ISBN into ``{{ISBNT|…}}`` (``isbn_rehyphenate_equal_label``), unless

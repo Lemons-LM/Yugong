@@ -13,6 +13,8 @@ Implemented (all idempotent and confined to the page being processed):
   left alone.
 * Empty category sort keys: ``[[Category:X|  ]]`` -> ``[[Category:X]]``
   (non-empty sort keys are kept).
+* Empty list items left behind by a template deletion (``* `` alone on a
+  line) are removed.
 * Empty headings (including comment-only headings) are removed.
 * ``bogus-image-options`` duplicate bare pixel sizes:
   ``[[File:X|240px|thumb|200px|...]]`` -> ``[[File:X|240px|thumb|...]]``.
@@ -204,38 +206,86 @@ def _convert_font(tag: mph.wikicode.Tag) -> bool:
     return True
 
 
+def _escape_top_level_pipes(contents: str) -> str:
+    """Escape every pipe that would split the ``{{Center}}`` parameter.
+
+    Pipes inside nested templates, wikilinks or comments are left alone; pipes
+    in plain text and in HTML tag attributes are escaped with ``{{!}}``.
+    """
+    output: list[str] = []
+    stack: list[str] = []
+    index = 0
+
+    while index < len(contents):
+        if contents.startswith("<!--", index):
+            end = contents.find("-->", index + 4)
+            if end == -1:
+                output.append(contents[index:])
+                break
+            output.append(contents[index : end + 3])
+            index = end + 3
+            continue
+
+        for opener, closer in (("{{{", "}}}"), ("{{", "}}"), ("[[", "]]")):
+            if contents.startswith(opener, index):
+                stack.append(closer)
+                output.append(opener)
+                index += len(opener)
+                break
+        else:
+            for closer in ("}}}", "}}", "]]"):
+                if contents.startswith(closer, index):
+                    if stack and stack[-1] == closer:
+                        stack.pop()
+                    output.append(closer)
+                    index += len(closer)
+                    break
+            else:
+                character = contents[index]
+                if character == "|" and not stack:
+                    output.append("{{!}}")
+                else:
+                    output.append(character)
+                index += 1
+
+    return "".join(output)
+
+
 def _replace_center_template(
     code: mph.wikicode.Wikicode, tag: mph.wikicode.Tag
 ) -> bool:
-    """Replace a bare ``<center>`` with the wiki's ``{{center}}`` template.
+    """Replace ``<center>`` with the wiki's ``{{Center}}`` template.
 
-    Only the cases that translate cleanly are converted; a tag with extra
-    attributes or a top-level ``|`` falls back to the ``<div>`` conversion.
+    ``<center>`` is always turned into ``{{Center}}`` — never into a
+    ``<div>``/``<span>`` — with top-level pipes escaped as ``{{!}}`` so the
+    content stays in parameter 1.  Cases that cannot be expressed safely (extra
+    attributes, table markup, dynamic styles) are left untouched for a human.
     """
     if str(tag.tag).strip().lower() != "center":
         return False
 
+    # This tag is handled by this function whatever happens below: never let
+    # the generic obsolete-tag conversion turn it into a <div>.
     names = [str(attribute.name).strip().lower() for attribute in tag.attributes]
-    if any(name != "style" for name in names):
-        return False
-    if tag.contents is None:
-        return False
+    if any(name != "style" for name in names) or tag.contents is None:
+        return True
 
     contents = str(tag.contents).strip()
-    # A top-level pipe cannot be passed through {{center}} safely; tables,
-    # links and nested templates fall back to the <div> form.
-    if not contents or "|" in contents:
-        return False
+    # Table markup contains its own pipes and line structure; a template call
+    # would break it, so leave the (obsolete but valid) tag for a human.
+    if not contents or "{|" in contents:
+        return True
 
     style = ""
     if "style" in names:
         style = str(tag.get("style").value).strip()
         if not _simple(style) or "|" in style or "=" in style:
-            return False
+            return True
 
-    positional = "1=" if "=" in contents else ""
+    escaped = _escape_top_level_pipes(contents)
+    positional = "1=" if "=" in escaped else ""
     prefix = f"style={style}|" if style else ""
-    replacement = "{{center|" + prefix + positional + contents + "}}"
+    replacement = "{{Center|" + prefix + positional + escaped + "}}"
 
     code.replace(tag, mph.parse(replacement))
     return True
@@ -363,6 +413,86 @@ def _fix_duplicate_image_sizes(wikitext: Wikitext) -> None:
         wikitext.wikitext.replace(link, f"[[{rebuilt}]]")
 
 
+_EMPTY_LIST_ITEM_RE = re.compile(r"(?m)^[ \t]*[*#]+[ \t]*(?:\r?\n|$)")
+_EMPTY_LINE_AFTER_MARKER_RE = re.compile(r"[ \t]*(?:\r?\n|$)")
+
+
+def _merge_adjacent_text(code: mph.wikicode.Wikicode) -> None:
+    """Join neighbouring text nodes.
+
+    Earlier jobs that replace a node can leave the surrounding newline in a
+    separate text node.  The list-item check needs the complete line in one
+    node (``" \\n"`` rather than ``" "`` + ``"\\n"``).
+    """
+    index = 0
+    while index + 1 < len(code.nodes):
+        current = code.nodes[index]
+        following = code.nodes[index + 1]
+        if isinstance(current, mph.nodes.Text) and isinstance(following, mph.nodes.Text):
+            current.value = str(current) + str(following)
+            code.remove(following)
+        else:
+            index += 1
+
+
+def _remove_empty_list_items(wikitext: Wikitext) -> None:
+    """Drop list-item lines that hold nothing (e.g. after template deletion).
+
+    mwparserfromhell represents a list marker (``*``/``#``) as an ``li`` tag
+    whose content follows as a sibling text node, so an empty item is a run of
+    ``li`` tags followed by a text node starting with a line break.
+    """
+    nodes = list(wikitext.wikitext.nodes)
+    index = 0
+    while index < len(nodes):
+        node = nodes[index]
+        if not (
+            isinstance(node, mph.nodes.Tag)
+            and str(node.tag).strip().lower() == "li"
+        ):
+            index += 1
+            continue
+
+        end = index
+        while end < len(nodes):
+            candidate = nodes[end]
+            if not (
+                isinstance(candidate, mph.nodes.Tag)
+                and str(candidate.tag).strip().lower() == "li"
+            ):
+                break
+            end += 1
+
+        following = nodes[end] if end < len(nodes) else None
+        match = None
+        if following is None:
+            pass  # markers at the end of the page: an empty item
+        elif isinstance(following, mph.nodes.Text):
+            match = re.match(r"[ \t]*\r?\n", str(following))
+            if match is None and end == len(nodes) - 1 and not str(following).strip():
+                match = _EMPTY_LINE_AFTER_MARKER_RE.match(str(following))
+            if match is None:
+                index = end
+                continue
+        else:
+            # More content follows the markers (a link, a template, ...).
+            index = end
+            continue
+
+        for marker in nodes[index:end]:
+            wikitext.wikitext.remove(marker)
+        if match is not None and isinstance(following, mph.nodes.Text):
+            following.value = str(following)[match.end():]
+        index = end
+
+    for node in list(wikitext.wikitext.nodes):
+        if not isinstance(node, mph.nodes.Text):
+            continue
+        new_value = _EMPTY_LIST_ITEM_RE.sub("", str(node))
+        if new_value != str(node):
+            node.value = new_value
+
+
 def _remove_empty_category_sortkeys(wikitext: Wikitext) -> None:
     for link in wikitext.wikilinks():
         title = str(link.title).strip().lower()
@@ -376,6 +506,8 @@ def _remove_empty_category_sortkeys(wikitext: Wikitext) -> None:
 def lint_fixes_job(wikitext: Wikitext) -> None:
     """Apply the safe LintErrors / obsolete-syntax fixes to the page."""
     _walk(wikitext.wikitext)
+    _merge_adjacent_text(wikitext.wikitext)
+    _remove_empty_list_items(wikitext)
     _remove_empty_category_sortkeys(wikitext)
     _fix_duplicate_image_sizes(wikitext)
 

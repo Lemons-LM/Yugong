@@ -72,7 +72,8 @@ def _to_zh_hans(text: str) -> str:
                 )
                 _converter_missing_reported = True
             return text
-        _converter = opencc.OpenCC("t2s.json")  # Traditional -> Simplified
+        # ``tw2s`` resolves 著/着 the way MediaWiki's zh-cn conversion does.
+        _converter = opencc.OpenCC("tw2s.json")  # Traditional -> Simplified
 
     return str(_converter.convert(text))
 

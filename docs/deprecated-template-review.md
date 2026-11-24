@@ -12,11 +12,11 @@ covering 185 parent templates.
 
 | Rule file | Old template(s) | What it does | Why safe |
 |-----------|-----------------|--------------|----------|
-| `internal_link_helper.toml` | `Internal link helper`, `Internal link helper/<lang>` (92), `Link-<lang>` (90), `Ilh` | `[[{{{1|}}}]]` | The wiki documentation says the whole family is unused on Qiuwen ("请移除并直接替换为内部链接"); the first parameter is the local title. |
-| `translink.toml` | `Translink`, `Tsl` | Internal link to param 3 (Chinese title), else param 2 (foreign title); display param 4 if present | Params documented in `Template:Translink/doc`; parser functions handle the empty-param fallback. |
+| `internal_link_helper.toml` | `Internal link helper`, `Internal link helper/<lang>` (92), `Link-<lang>` (90), `Ilh` | `[[{{{1|}}}]]`; skipped when parameter 1 is empty (would otherwise become `[[]]`) | The wiki documentation says the whole family is unused on Qiuwen ("请移除并直接替换为内部链接"); the first parameter is the local title. |
+| `translink.toml` | `Translink`, `Tsl` | Internal link to param 3 (Chinese title), else param 2 (foreign title); display param 4 if present; skipped when both title parameters are empty | Params documented in `Template:Translink/doc`; parser functions handle the empty-param fallback. |
 | `interlanguage_link_multi.toml` | `Interlanguage link multi` | Rename to `多語言連結` | The new template is the documented replacement and is literally `[[{{{1}}}]]`; extra params are ignored harmlessly. |
-| `deprecated_city.toml` | `城市` | Exact expansion of the wiki wrapper into `{{Infobox settlement|...}}` | `Template:城市` is a pure parameter mapping; generated from the template body. |
-| `deprecated_country_infobox.toml` | `國家基礎資訊` | Exact expansion of the wiki wrapper into `{{Infobox country|...}}` | Pure wrapper; large expansion (~3.5k chars), so raise the diff limit for runs that use it. |
+| `deprecated_city.toml` | `城市` | Expansion of the wiki wrapper into `{{Infobox settlement|...}}`, keeping only the parameters the original call supplied (`drop_unsourced_params`) | `Template:城市` is a pure parameter mapping; generated from the template body. |
+| `deprecated_country_infobox.toml` | `國家基礎資訊` | Expansion of the wiki wrapper into `{{Infobox country|...}}`, keeping only the parameters the original call supplied (`drop_unsourced_params`) | Pure wrapper. The full skeleton is ~6.5k chars; the pruned output only expands the supplied parameters, so most pages need a diff limit well below that. |
 | `double_image.toml` | `Double image` | Reviewed `Multiple image` mapping for positional params 1–9 and `valign` | The old template is a wrapper; parser functions are left for MediaWiki to evaluate. |
 | `short_description.toml` | `Short description` | Delete the template | `Template:Short description/doc` says it was imported from English Wikipedia but is not enabled on Qiuwen, and tells editors to delete it. |
 | `font_color.toml` | `Font color` | `{{color|fg|text}}`, including named `fg`/`text` | The doc says to use `{{color}}`; background and link coloring are not supported by the new template. |

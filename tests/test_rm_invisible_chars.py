@@ -124,5 +124,29 @@ class InvisibleCharsStructureTest(unittest.TestCase):
         self.assertEqual(fix(once), once)
 
 
+class InvisibleCharsWouldBeEmptyTest(unittest.TestCase):
+    """Cleaning must not turn a field made only of invisibles into ``""``."""
+
+    def test_template_name_is_kept(self) -> None:
+        text = "{{" + ZWSP + "}}"
+        self.assertEqual(fix(text), text)
+
+    def test_template_name_with_parameters_is_kept(self) -> None:
+        text = "{{" + ZWSP + "|a=b}}"
+        self.assertEqual(fix(text), text)
+
+    def test_parameter_name_is_kept(self) -> None:
+        text = "{{T|" + ZWSP + "=v}}"
+        self.assertEqual(fix(text), text)
+
+    def test_wikilink_title_is_kept(self) -> None:
+        text = "[[" + ZWSP + "]]"
+        self.assertEqual(fix(text), text)
+
+    def test_tag_name_is_kept(self) -> None:
+        text = "<" + ZWSP + ">x</" + ZWSP + ">"
+        self.assertEqual(fix(text), text)
+
+
 if __name__ == "__main__":
     unittest.main()

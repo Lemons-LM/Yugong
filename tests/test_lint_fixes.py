@@ -22,28 +22,31 @@ class ObsoleteTagTest(unittest.TestCase):
         self.assertEqual(fix(text), text)
 
     def test_center_becomes_the_center_template(self) -> None:
-        self.assertEqual(fix("<center>文字</center>"), "{{center|文字}}")
+        self.assertEqual(fix("<center>文字</center>"), "{{Center|文字}}")
         self.assertEqual(
             fix('<center style="color:red">文字</center>'),
-            "{{center|style=color:red|文字}}",
+            "{{Center|style=color:red|文字}}",
         )
 
-    def test_center_with_top_level_pipe_falls_back_to_div(self) -> None:
+    def test_center_with_top_level_pipe_escapes_it(self) -> None:
+        self.assertEqual(fix("<center>a|b</center>"), "{{Center|a{{!}}b}}")
         self.assertEqual(
-            fix("<center>a|b</center>"), '<div style="text-align: center">a|b</div>'
+            fix("<center>[[A|B]]</center>"), "{{Center|[[A|B]]}}"
         )
 
-    def test_center_with_other_attributes_falls_back_to_div(self) -> None:
-        self.assertIn(
-            '<div class="x" style="text-align: center">文字</div>',
-            fix('<center class="x">文字</center>'),
+    def test_center_escapes_pipes_inside_html_attributes(self) -> None:
+        self.assertEqual(
+            fix('<center><span style="a|b">x</span></center>'),
+            '{{Center|1=<span style="a{{!}}b">x</span>}}',
         )
 
-    def test_center_around_a_table_falls_back_to_div(self) -> None:
+    def test_center_with_other_attributes_is_left_untouched(self) -> None:
+        text = '<center class="x">文字</center>'
+        self.assertEqual(fix(text), text)
+
+    def test_center_around_a_table_is_left_untouched(self) -> None:
         text = '<center>\n{| class="wikitable"\n| a\n|}\n</center>'
-        result = fix(text)
-        self.assertIn('<div style="text-align: center">', result)
-        self.assertNotIn("{{center", result)
+        self.assertEqual(fix(text), text)
 
     def test_big_tt_and_strike(self) -> None:
         self.assertEqual(fix("<big>大</big>"), '<span style="font-size: larger">大</span>')
@@ -138,6 +141,16 @@ class CategorySortKeyTest(unittest.TestCase):
     def test_only_empty_sort_keys_are_removed(self) -> None:
         self.assertEqual(fix("[[Category:X|  ]]"), "[[Category:X]]")
         self.assertEqual(fix("[[Category:X|key]]"), "[[Category:X|key]]")
+
+
+class EmptyListItemTest(unittest.TestCase):
+    def test_empty_items_left_by_template_deletion_are_removed(self) -> None:
+        self.assertEqual(fix("* \n文字"), "文字")
+        self.assertEqual(fix("*\n## \n** \n== 标题 =="), "== 标题 ==")
+
+    def test_non_empty_list_items_are_kept(self) -> None:
+        text = "* 有内容\n# 也有"
+        self.assertEqual(fix(text), text)
 
 
 class IdempotenceTest(unittest.TestCase):

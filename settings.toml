@@ -21,7 +21,7 @@ api_endpoint = "https://www.qiuwenbaike.cn/"
 # Only OAuth is supported, so this must stay true.  Put the access token in the
 # MW_OAUTH_TOKEN environment variable (never in this file).
 is_owner_only = true
-bot_name = "Yugong-bot"
+bot_name = "Lemonade-bot"
 wiki_domain = "www.qiuwenbaike.cn"
 # Language code and pywikibot family name the Site is built from.
 wiki_lang = "zh"
@@ -33,12 +33,12 @@ wiki_tag = "wiki"
 # ── About Task (set at least one) ────────────────────────────────────────────
 # Page-id range.  page_id_start = 0 disables this selector; page_id_end = 0 means
 # "just page_id_start".  The span is capped by MAX_PAGEID_SPAN (5000).
-page_id_start = 0
-page_id_end = 0
+# page_id_start = 0
+# page_id_end = 0
 # Or: every page transcluding this template (without the "Template:" prefix).
-linked_template = ""
+# linked_template = ""
 # Or: every member of this category (without the "Category:" prefix).
-category = ""
+category = "YuGong one-off test 2026-11-23"
 
 # ── Settings / behaviour ─────────────────────────────────────────────────────
 # true = robot mode, no prompts.
@@ -52,7 +52,7 @@ overwrite_para_name = true
 # CGroup rules, then OpenCC.  Pages without NoteTA still get the OpenCC
 # script-level conversion.  Categories are handled separately by
 # category_handler.  Requires the NoteTA groups to be readable by the bot.
-enable_cangjie = false
+enable_cangjie = true
 # ISBN normaliser: hyphenate ISBN-10/13 in {{ISBN}}/{{ISBNT}}/citation
 # templates with the International ISBN Agency range data, and clean up
 # Special:BookSources links.  Off by default; enable it deliberately.

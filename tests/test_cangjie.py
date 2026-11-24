@@ -85,6 +85,16 @@ class CangjieTest(unittest.TestCase):
         result = run_cangjie(text)
         self.assertIn("[http://example.com 中国大陆]", result)
 
+    def test_opencc_resolves_the_traditional_zhe_particle(self) -> None:
+        try:
+            import opencc  # noqa: F401
+        except ImportError:
+            self.skipTest("opencc is not installed")
+
+        self.assertEqual(cangjie._opencc_convert("隨著圖靈機"), "随着图灵机")
+        # The phrase table must not turn 著名/著作 into 着名/着作.
+        self.assertEqual(cangjie._opencc_convert("著名著作"), "著名著作")
+
     def test_opencc_runs_after_noteta(self) -> None:
         text = "{{NoteTA|1=zh-cn:米;zh-tw:公尺;}}\n公尺身體"
         result = run_cangjie(text, opencc=lambda value: value.replace("體", "体"))

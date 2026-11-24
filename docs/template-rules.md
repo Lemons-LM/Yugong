@@ -2,7 +2,7 @@
 
 Template rules are TOML files in the `template_rules/` directory. They define automated transformations applied to wiki templates during processing.
 
-Rules are applied by `TemplateFormatter.format_template()`, which is the **first step of every page**, before the `@job` extensions run. Without rules there is nothing to apply; the loader globs `template_rules/*.toml` only, so `template_rules/example.toml.disabled` is deliberately ignored until you rename it.
+Rules are applied by `TemplateFormatter.format_template()`, which runs **before the ordinary `@job` extensions**. Jobs registered with `@job(pre_template=True)` — currently the invisible-character cleanup — run first so they can normalise template names before rule matching. Without rules there is nothing to apply; the loader globs `template_rules/*.toml` only, so `template_rules/example.toml.disabled` is deliberately ignored until you rename it.
 
 ## File structure
 
@@ -50,6 +50,8 @@ Actions applied to the template as a whole. At most **one** of them may be set; 
 | `rename` | `bool` | If true, rename the template to `names[0]` (subject to `overwrite_template_name`) |
 | `delete` | `bool` | If true, remove the template entirely |
 | `replace` | `str` | Replace the entire template with this string. Use `{{{param_name}}}` for parameter values, `{{{1}}}` for anonymous params. Supports defaults and nesting: `{{{foo\|default}}}`, `{{{foo\|{{{1}}}}}}` |
+| `skip_if_all_empty` | `list[str]` | Only valid with `replace`. Do not replace when every listed parameter is missing or blank. Use it when the replacement would otherwise become an empty link: `{{Ilh}}` must not turn into `[[]]` |
+| `drop_unsourced_params` | `bool` | Only valid with `replace`. Keep only generated parameters whose value references at least one non-empty parameter of the original call. Wrapper expansions (`{{城市}}`, `{{國家基礎資訊}}`) therefore no longer emit the whole empty infobox skeleton; parameters the editor did not supply (and the wrapper's fixed labels) are dropped |
 
 ## `[[params]]`
 
@@ -116,7 +118,7 @@ During startup, `TemplateFormatter.get_ruleset()` (re)loads every `*.toml` file 
 2. Validates the rule: `names` must be non-empty, `introduction` must be set, `[template_level]` must not combine conflicting actions, every regex (parameter names, `condition`, `match`) must compile, and `rename = true` requires `new_name`. A malformed rule aborts the run with a descriptive error instead of being ignored.
 3. Registers the rule under every capitalized `names` entry, rejecting duplicates.
 
-Later, during page processing, `format_template()` runs as the first step: for every template on the page it looks up `_safe_capitalize(name)` in the registry and applies the matching rule (template-level action first, then the `params` blocks).
+Later, during page processing, `format_template()` runs before the ordinary extensions: for every template on the page it looks up `_safe_capitalize(name)` in the registry and applies the matching rule (template-level action first, then the `params` blocks). It rescans until no rule changes anything, so a template exposed by an outer replacement is handled in the same run.
 
 ## Shipped rules
 
@@ -128,8 +130,8 @@ manual list are in [`docs/deprecated-template-review.md`](deprecated-template-re
 | `internal_link_helper.toml` | `Internal link helper`, its 92 language subpages, 90 `Link-*` aliases and `Ilh` → `[[{{{1\|}}}]]` (Qiuwen has no foreign editions) |
 | `translink.toml` | `Translink`/`Tsl` → internal link to param 3, else param 2; display param 4 |
 | `interlanguage_link_multi.toml` | `Interlanguage link multi` → rename to `多語言連結` |
-| `deprecated_city.toml` | `{{城市}}` → exact wiki-defined `{{Infobox settlement}}` wrapper |
-| `deprecated_country_infobox.toml` | `{{國家基礎資訊}}` → exact wiki-defined `{{Infobox country}}` wrapper |
+| `deprecated_city.toml` | `{{城市}}` → wiki-defined `{{Infobox settlement}}` wrapper, emitting only the parameters the original call supplied |
+| `deprecated_country_infobox.toml` | `{{國家基礎資訊}}` → wiki-defined `{{Infobox country}}` wrapper, emitting only the parameters the original call supplied |
 | `double_image.toml` | `Double image` → reviewed `Multiple image` positional mapping |
 | `short_description.toml` | Delete `Short description` (not enabled on Qiuwen) |
 | `font_color.toml` | `Font color` → `Color` (foreground + text) |
